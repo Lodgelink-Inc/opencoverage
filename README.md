@@ -138,6 +138,59 @@ curl -i "$BASE_URL/v1/projects/$PROJECT_ID/coverage-runs/latest-comparison" \
 
 ## Coverage CLI Workflow
 
+### Ingest Response Example (`POST /v1/coverage-runs`)
+
+When a record is created, the API returns project/run metadata plus computed comparison and package deltas.
+
+Example response:
+
+```json
+{
+	"project": {
+		"id": "1b22413a-f9d2-4675-8ab9-f0ee309ef871",
+		"projectKey": "github.com/arxdsilva/coverage-api",
+		"name": "coverage-api",
+		"defaultBranch": "main",
+		"globalThresholdPercent": 80,
+		"created": true
+	},
+	"run": {
+		"id": "0f171469-1cf6-4172-9334-b29381dd23de",
+		"branch": "main",
+		"commitSha": "local",
+		"author": "local",
+		"triggerType": "manual",
+		"runTimestamp": "2026-03-28T22:18:18Z",
+		"totalCoveragePercent": 1.9
+	},
+	"comparison": {
+		"baselineSource": "latest_default_branch",
+		"previousTotalCoveragePercent": null,
+		"currentTotalCoveragePercent": 1.9,
+		"deltaPercent": null,
+		"direction": "new",
+		"thresholdPercent": 80,
+		"thresholdStatus": "failed"
+	},
+	"packages": [
+		{
+			"importPath": "github.com/arxdsilva/coverage-api/internal/domain",
+			"previousCoveragePercent": null,
+			"currentCoveragePercent": 50,
+			"deltaPercent": null,
+			"direction": "new"
+		}
+	]
+}
+```
+
+Fields typically used in CI policy:
+
+- `comparison.thresholdStatus` (`passed` or `failed`)
+- `comparison.deltaPercent` (negative means coverage dropped)
+- `comparison.currentTotalCoveragePercent`
+- `comparison.previousTotalCoveragePercent`
+
 ## GitHub Actions
 
 Workflow file: `.github/workflows/ci.yml`
@@ -186,6 +239,71 @@ GitHub Actions step example:
 			-author "github-actions" \
 			-trigger-type push \
 			-upload
+```
+
+### PR Coverage Interaction (Warning or Fail)
+
+For pull requests, you can upload coverage and then decide policy from API response:
+
+1. **Warning mode**: annotate PR with a warning, but do not fail job.
+2. **Fail mode**: fail job when `comparison.thresholdStatus == "failed"`.
+
+Example PR step (requires `jq` on runner):
+
+```yaml
+- name: Upload PR coverage and capture response
+	id: pr_coverage
+	if: ${{ github.event_name == 'pull_request' && secrets.COVERAGE_API_URL != '' && secrets.COVERAGE_API_KEY != '' }}
+	env:
+		API_URL: ${{ secrets.COVERAGE_API_URL }}
+		API_KEY: ${{ secrets.COVERAGE_API_KEY }}
+	run: |
+		go test ./... -coverprofile=coverage.out
+		go run ./cmd/coveragecli \
+			-coverprofile coverage.out \
+			-out coverage-upload.json \
+			-project-key "${{ github.repository }}" \
+			-project-name "${{ github.event.repository.name }}" \
+			-branch "${{ github.head_ref }}" \
+			-commit-sha "${{ github.sha }}" \
+			-author "github-actions" \
+			-trigger-type pr
+
+		RESPONSE=$(curl -sS -X POST "$API_URL" \
+			-H "Content-Type: application/json" \
+			-H "X-API-Key: $API_KEY" \
+			--data-binary @coverage-upload.json)
+
+		echo "$RESPONSE" > coverage-api-response.json
+
+		STATUS=$(jq -r '.comparison.thresholdStatus' coverage-api-response.json)
+		CURRENT=$(jq -r '.comparison.currentTotalCoveragePercent' coverage-api-response.json)
+		PREV=$(jq -r '.comparison.previousTotalCoveragePercent' coverage-api-response.json)
+		DELTA=$(jq -r '.comparison.deltaPercent' coverage-api-response.json)
+
+		echo "thresholdStatus=$STATUS" >> "$GITHUB_OUTPUT"
+		echo "currentCoverage=$CURRENT" >> "$GITHUB_OUTPUT"
+		echo "previousCoverage=$PREV" >> "$GITHUB_OUTPUT"
+		echo "deltaCoverage=$DELTA" >> "$GITHUB_OUTPUT"
+```
+
+Warning-only policy:
+
+```yaml
+- name: Warn when threshold fails
+	if: ${{ steps.pr_coverage.outputs.thresholdStatus == 'failed' }}
+	run: |
+		echo "::warning title=Coverage Threshold Failed::Current=${{ steps.pr_coverage.outputs.currentCoverage }} Previous=${{ steps.pr_coverage.outputs.previousCoverage }} Delta=${{ steps.pr_coverage.outputs.deltaCoverage }}"
+```
+
+Failing policy:
+
+```yaml
+- name: Fail when threshold fails
+	if: ${{ steps.pr_coverage.outputs.thresholdStatus == 'failed' }}
+	run: |
+		echo "Coverage threshold failed"
+		exit 1
 ```
 
 Generate Go coverage profile and API payload file:
