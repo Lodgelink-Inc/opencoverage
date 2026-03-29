@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-//go:embed web/*
+//go:embed web/index.html web/assets/*
 var embeddedFrontend embed.FS
 
 type config struct {

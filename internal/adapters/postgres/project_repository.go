@@ -89,15 +89,23 @@ func (r *ProjectRepository) Create(ctx context.Context, project domain.Project) 
 	return project, nil
 }
 
-func (r *ProjectRepository) List(ctx context.Context) ([]domain.Project, error) {
+func (r *ProjectRepository) List(ctx context.Context, page int, pageSize int) ([]domain.Project, int, error) {
 	q := getQuerier(ctx, r.pool)
+	offset := (page - 1) * pageSize
+
+	var total int
+	if err := q.QueryRow(ctx, `SELECT COUNT(*) FROM projects`).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count projects: %w", err)
+	}
+
 	rows, err := q.Query(ctx, `
 		SELECT id, project_key, COALESCE(name, ''), default_branch, global_threshold_percent, created_at, updated_at
 		FROM projects
 		ORDER BY created_at DESC
-	`)
+		LIMIT $1 OFFSET $2
+	`, pageSize, offset)
 	if err != nil {
-		return nil, fmt.Errorf("list projects: %w", err)
+		return nil, 0, fmt.Errorf("list projects: %w", err)
 	}
 	defer rows.Close()
 
@@ -113,14 +121,14 @@ func (r *ProjectRepository) List(ctx context.Context) ([]domain.Project, error) 
 			&p.CreatedAt,
 			&p.UpdatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("scan project: %w", err)
+			return nil, 0, fmt.Errorf("scan project: %w", err)
 		}
 		projects = append(projects, p)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate projects: %w", err)
+		return nil, 0, fmt.Errorf("iterate projects: %w", err)
 	}
 
-	return projects, nil
+	return projects, total, nil
 }

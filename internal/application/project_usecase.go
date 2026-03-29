@@ -11,8 +11,14 @@ type GetProjectUseCase struct {
 	projects ProjectRepository
 }
 
+type ListProjectsInput struct {
+	Page     int
+	PageSize int
+}
+
 type ListProjectsOutput struct {
-	Items []ProjectResponse `json:"items"`
+	Items      []ProjectResponse  `json:"items"`
+	Pagination PaginationResponse `json:"pagination"`
 }
 
 type ListProjectsUseCase struct {
@@ -46,8 +52,20 @@ func (uc *GetProjectUseCase) Execute(ctx context.Context, projectID string) (Pro
 	}, nil
 }
 
-func (uc *ListProjectsUseCase) Execute(ctx context.Context) (ListProjectsOutput, error) {
-	projects, err := uc.projects.List(ctx)
+func (uc *ListProjectsUseCase) Execute(ctx context.Context, in ListProjectsInput) (ListProjectsOutput, error) {
+	page := in.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := in.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	projects, total, err := uc.projects.List(ctx, page, pageSize)
 	if err != nil {
 		return ListProjectsOutput{}, NewInternal("failed to list projects", err)
 	}
@@ -64,5 +82,18 @@ func (uc *ListProjectsUseCase) Execute(ctx context.Context) (ListProjectsOutput,
 		})
 	}
 
-	return ListProjectsOutput{Items: items}, nil
+	totalPages := 0
+	if total > 0 {
+		totalPages = (total + pageSize - 1) / pageSize
+	}
+
+	return ListProjectsOutput{
+		Items: items,
+		Pagination: PaginationResponse{
+			Page:       page,
+			PageSize:   pageSize,
+			TotalItems: total,
+			TotalPages: totalPages,
+		},
+	}, nil
 }

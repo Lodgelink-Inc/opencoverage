@@ -19,10 +19,13 @@ const projectNext = document.getElementById('projectNext');
 const projectPageInfo = document.getElementById('projectPageInfo');
 
 let projects = [];
+let allProjects = [];
 let selectedProjectId = null;
 let heatmapItems = [];
 const projectsPerPage = 7;
 let projectPage = 1;
+let projectTotalPages = 1;
+let projectTotalItems = 0;
 
 refreshProjects.addEventListener('click', () => loadProjects());
 openHeatmap.addEventListener('click', () => {
@@ -30,16 +33,13 @@ openHeatmap.addEventListener('click', () => {
   toggleHeatmapOverlay(!isOpen);
 });
 closeHeatmap.addEventListener('click', () => toggleHeatmapOverlay(false));
-projectPrev.addEventListener('click', () => changeProjectPage(-1));
-projectNext.addEventListener('click', () => changeProjectPage(1));
+projectPrev.addEventListener('click', async () => changeProjectPage(-1));
+projectNext.addEventListener('click', async () => changeProjectPage(1));
 
-function totalProjectPages() {
-  return Math.max(1, Math.ceil(projects.length / projectsPerPage));
-}
-
-function changeProjectPage(offset) {
-  projectPage = Math.max(1, Math.min(totalProjectPages(), projectPage + offset));
-  renderProjectList();
+async function changeProjectPage(offset) {
+  const target = Math.max(1, Math.min(projectTotalPages, projectPage + offset));
+  if (target === projectPage) return;
+  await loadProjects(target);
 }
 
 function toggleHeatmapOverlay(open) {
@@ -47,16 +47,15 @@ function toggleHeatmapOverlay(open) {
   heatmapOverlay.setAttribute('aria-hidden', String(!open));
 }
 
-async function loadProjects() {
+async function loadProjects(page = projectPage) {
   try {
-    const res = await fetch('/api/projects');
+    const res = await fetch(`/api/projects?page=${page}&pageSize=${projectsPerPage}`);
     if (!res.ok) throw new Error(`failed to load projects (${res.status})`);
     const data = await res.json();
     projects = data.items || [];
-
-    if (projectPage > totalProjectPages()) {
-      projectPage = totalProjectPages();
-    }
+    projectPage = data.pagination?.page || page;
+    projectTotalPages = Math.max(1, data.pagination?.totalPages || 1);
+    projectTotalItems = data.pagination?.totalItems || projects.length;
 
     renderProjectList();
 
@@ -66,6 +65,7 @@ async function loadProjects() {
       await selectProject(selectedProjectId);
     }
 
+    await loadAllProjectsForHeatmap();
     await loadHeatmap();
   } catch (err) {
     selectedProjectName.textContent = 'Failed to load projects';
@@ -74,15 +74,26 @@ async function loadProjects() {
   }
 }
 
+async function loadAllProjectsForHeatmap() {
+  const pageSize = 100;
+  let page = 1;
+  let totalPages = 1;
+  const items = [];
+
+  while (page <= totalPages) {
+    const res = await fetch(`/api/projects?page=${page}&pageSize=${pageSize}`);
+    if (!res.ok) throw new Error(`failed to load projects page ${page} (${res.status})`);
+    const data = await res.json();
+    items.push(...(data.items || []));
+    totalPages = Math.max(1, data.pagination?.totalPages || 1);
+    page += 1;
+  }
+
+  allProjects = items;
+}
+
 function renderProjectList() {
   projectList.innerHTML = '';
-
-  const pages = totalProjectPages();
-  const selectedIndex = projects.findIndex((p) => p.id === selectedProjectId);
-  if (selectedIndex >= 0) {
-    projectPage = Math.floor(selectedIndex / projectsPerPage) + 1;
-  }
-  projectPage = Math.max(1, Math.min(pages, projectPage));
 
   if (projects.length === 0) {
     projectPagination.style.display = 'none';
@@ -93,17 +104,13 @@ function renderProjectList() {
     return;
   }
 
-  const showPagination = projects.length > projectsPerPage;
+  const showPagination = projectTotalItems > projectsPerPage;
   projectPagination.style.display = showPagination ? 'grid' : 'none';
-  projectPageInfo.textContent = `Page ${projectPage} / ${pages}`;
+  projectPageInfo.textContent = `Page ${projectPage} / ${projectTotalPages}`;
   projectPrev.disabled = projectPage <= 1;
-  projectNext.disabled = projectPage >= pages;
+  projectNext.disabled = projectPage >= projectTotalPages;
 
-  const start = (projectPage - 1) * projectsPerPage;
-  const end = start + projectsPerPage;
-  const pageItems = projects.slice(start, end);
-
-  for (const project of pageItems) {
+  for (const project of projects) {
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.className = selectedProjectId === project.id ? 'active' : '';
@@ -119,7 +126,7 @@ async function selectProject(projectId) {
   renderProjectList();
   renderHeatmap();
 
-  const project = projects.find((p) => p.id === projectId);
+  const project = projects.find((p) => p.id === projectId) || allProjects.find((p) => p.id === projectId);
   selectedProjectName.textContent = project?.name || project?.projectKey || 'Project';
   selectedProjectMeta.textContent = `${project?.projectKey || ''} - default branch: ${project?.defaultBranch || 'main'} - threshold: ${pct(project?.globalThresholdPercent)}`;
 
@@ -130,8 +137,10 @@ async function loadHeatmap() {
   heatmapItems = [];
   renderHeatmapLoading();
 
+  const sourceProjects = allProjects.length > 0 ? allProjects : projects;
+
   const items = await Promise.all(
-    projects.map(async (project) => {
+    sourceProjects.map(async (project) => {
       try {
         const res = await fetch(`/api/projects/${project.id}/coverage-runs/latest-comparison`);
         if (!res.ok) throw new Error(`failed to load latest comparison (${res.status})`);

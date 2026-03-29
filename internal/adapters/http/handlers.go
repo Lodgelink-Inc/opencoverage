@@ -101,14 +101,18 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	requestID := chiMiddleware.GetReqID(r.Context())
-	slog.Info("operation", "name", "list_projects", "stage", "start", "request_id", requestID)
-	out, err := h.listProjects.Execute(r.Context())
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
+
+	slog.Info("operation", "name", "list_projects", "stage", "start", "request_id", requestID, "page", page, "page_size", pageSize)
+	out, err := h.listProjects.Execute(r.Context(), application.ListProjectsInput{Page: page, PageSize: pageSize})
 	if err != nil {
 		slog.Error("operation", "name", "list_projects", "stage", "execute_failed", "request_id", requestID, "error", err)
 		writeAppError(w, err)
 		return
 	}
-	slog.Info("operation", "name", "list_projects", "stage", "success", "request_id", requestID, "items", len(out.Items), "duration_ms", time.Since(start).Milliseconds())
+	slog.Info("operation", "name", "list_projects", "stage", "success", "request_id", requestID, "items", len(out.Items), "page", out.Pagination.Page, "page_size", out.Pagination.PageSize, "total_items", out.Pagination.TotalItems, "duration_ms", time.Since(start).Milliseconds())
 	writeJSON(w, http.StatusOK, out)
 }
 
