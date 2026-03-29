@@ -13,10 +13,8 @@ const openHeatmap = document.getElementById('openHeatmap');
 const closeHeatmap = document.getElementById('closeHeatmap');
 const heatmapOverlay = document.getElementById('heatmapOverlay');
 const heatmapGrid = document.getElementById('heatmapGrid');
-const projectPagination = document.getElementById('projectPagination');
-const projectPrev = document.getElementById('projectPrev');
-const projectNext = document.getElementById('projectNext');
-const projectPageInfo = document.getElementById('projectPageInfo');
+const projectSelector = document.getElementById('projectSelector');
+const projectSearchInput = document.getElementById('projectSearchInput');
 const compareCard = document.getElementById('compareCard');
 const compareSummary = document.getElementById('compareSummary');
 const compareCurrent = document.getElementById('compareCurrent');
@@ -26,14 +24,11 @@ const branchSelector = document.getElementById('branchSelector');
 
 let projects = [];
 let allProjects = [];
+let filteredProjects = [];
 let selectedProjectId = null;
 let selectedBranch = '';
 let availableBranches = [];
 let heatmapItems = [];
-const projectsPerPage = 7;
-let projectPage = 1;
-let projectTotalPages = 1;
-let projectTotalItems = 0;
 
 refreshProjects.addEventListener('click', () => loadProjects());
 openHeatmap.addEventListener('click', () => {
@@ -41,43 +36,51 @@ openHeatmap.addEventListener('click', () => {
   toggleHeatmapOverlay(!isOpen);
 });
 closeHeatmap.addEventListener('click', () => toggleHeatmapOverlay(false));
-projectPrev.addEventListener('click', async () => changeProjectPage(-1));
-projectNext.addEventListener('click', async () => changeProjectPage(1));
+projectSelector.addEventListener('change', async (e) => {
+  await selectProject(e.target.value);
+});
+projectSearchInput.addEventListener('input', (e) => {
+  filterAndRenderProjects(e.target.value);
+});
 branchSelector.addEventListener('change', async (e) => {
   selectedBranch = e.target.value;
   await loadLatestComparison(selectedProjectId);
 });
-
-async function changeProjectPage(offset) {
-  const target = Math.max(1, Math.min(projectTotalPages, projectPage + offset));
-  if (target === projectPage) return;
-  await loadProjects(target);
-}
 
 function toggleHeatmapOverlay(open) {
   heatmapOverlay.classList.toggle('open', open);
   heatmapOverlay.setAttribute('aria-hidden', String(!open));
 }
 
-async function loadProjects(page = projectPage) {
+async function loadProjects() {
   try {
-    const res = await fetch(`/api/projects?page=${page}&pageSize=${projectsPerPage}`);
-    if (!res.ok) throw new Error(`failed to load projects (${res.status})`);
-    const data = await res.json();
-    projects = data.items || [];
-    projectPage = data.pagination?.page || page;
-    projectTotalPages = Math.max(1, data.pagination?.totalPages || 1);
-    projectTotalItems = data.pagination?.totalItems || projects.length;
+    const pageSize = 100;
+    let page = 1;
+    let totalPages = 1;
+    const items = [];
 
-    renderProjectList();
+    while (page <= totalPages) {
+      const res = await fetch(`/api/projects?page=${page}&pageSize=${pageSize}`);
+      if (!res.ok) throw new Error(`failed to load projects (${res.status})`);
+      const data = await res.json();
+      items.push(...(data.items || []));
+      totalPages = Math.max(1, data.pagination?.totalPages || 1);
+      page += 1;
+    }
+
+    projects = items;
+    allProjects = items;
+    filteredProjects = items;
+    renderProjectSelector();
 
     if (!selectedProjectId && projects.length > 0) {
       await selectProject(projects[0].id);
-    } else if (selectedProjectId) {
-      await selectProject(selectedProjectId);
-    }
+     renderProjectSelector(); // Update dropdown to show selected project
+     } else if (selectedProjectId) {
+       await selectProject(selectedProjectId);
+       renderProjectSelector(); // Update dropdown to show selected project
+     }
 
-    await loadAllProjectsForHeatmap();
     await loadHeatmap();
   } catch (err) {
     selectedProjectName.textContent = 'Failed to load projects';
@@ -86,57 +89,42 @@ async function loadProjects(page = projectPage) {
   }
 }
 
-async function loadAllProjectsForHeatmap() {
-  const pageSize = 100;
-  let page = 1;
-  let totalPages = 1;
-  const items = [];
-
-  while (page <= totalPages) {
-    const res = await fetch(`/api/projects?page=${page}&pageSize=${pageSize}`);
-    if (!res.ok) throw new Error(`failed to load projects page ${page} (${res.status})`);
-    const data = await res.json();
-    items.push(...(data.items || []));
-    totalPages = Math.max(1, data.pagination?.totalPages || 1);
-    page += 1;
+function renderProjectSelector() {
+  projectSelector.innerHTML = '';
+  
+  const emptyOption = document.createElement('option');
+  emptyOption.value = '';
+  emptyOption.textContent = 'Select a project...';
+  projectSelector.appendChild(emptyOption);
+  
+  for (const project of filteredProjects) {
+    const option = document.createElement('option');
+    option.value = project.id;
+    option.textContent = `${project.name || project.projectKey} (${project.projectKey})`;
+    projectSelector.appendChild(option);
   }
-
-  allProjects = items;
+  
+  projectSelector.value = selectedProjectId || '';
 }
 
-function renderProjectList() {
-  projectList.innerHTML = '';
-
-  if (projects.length === 0) {
-    projectPagination.style.display = 'none';
-    const li = document.createElement('li');
-    li.textContent = 'No projects found.';
-    li.className = 'muted';
-    projectList.appendChild(li);
-    return;
+function filterAndRenderProjects(searchTerm) {
+  const term = searchTerm.toLowerCase();
+  if (!term) {
+    filteredProjects = allProjects;
+  } else {
+    filteredProjects = allProjects.filter(p => {
+      const name = (p.name || '').toLowerCase();
+      const key = (p.projectKey || '').toLowerCase();
+      return name.includes(term) || key.includes(term);
+    });
   }
-
-  const showPagination = projectTotalItems > projectsPerPage;
-  projectPagination.style.display = showPagination ? 'grid' : 'none';
-  projectPageInfo.textContent = `Page ${projectPage} / ${projectTotalPages}`;
-  projectPrev.disabled = projectPage <= 1;
-  projectNext.disabled = projectPage >= projectTotalPages;
-
-  for (const project of projects) {
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
-    btn.className = selectedProjectId === project.id ? 'active' : '';
-    btn.innerHTML = `<strong>${project.name || project.projectKey}</strong><small>${project.id}</small>`;
-    btn.addEventListener('click', () => selectProject(project.id));
-    li.appendChild(btn);
-    projectList.appendChild(li);
-  }
+  renderProjectSelector();
 }
 
 async function selectProject(projectId) {
   selectedProjectId = projectId;
   selectedBranch = '';
-  renderProjectList();
+  projectSearchInput.value = '';
   renderHeatmap();
 
   const project = projects.find((p) => p.id === projectId) || allProjects.find((p) => p.id === projectId);
