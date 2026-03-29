@@ -1,5 +1,7 @@
 # Copilot Instructions for coverage-api
 
+Never commit generated code, all code must be manually reviewed and edited as needed to fit architecture and style guidelines. Always follow the architecture and coding standards defined in `copilot-instructions.md`.
+
 ## Mission
 Build and evolve a Go REST API for coverage ingestion and comparison using Hexagonal Architecture, clean boundaries, and production-grade engineering practices.
 

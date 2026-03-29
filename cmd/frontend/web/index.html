@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   </head>
   <body>
     <div class="bg-grid"></div>
@@ -37,11 +38,20 @@
       </aside>
 
       <section class="content">
-        <header class="top card">
-          <p class="eyebrow">Overview</p>
-          <h2 id="selectedProjectName">Select a project</h2>
-          <p id="selectedProjectMeta" class="muted">No project selected</p>
-        </header>
+        <section class="overview-row">
+          <header class="top card">
+            <p class="eyebrow">Overview</p>
+            <h2 id="selectedProjectName">Select a project</h2>
+            <p id="selectedProjectMeta" class="muted">No project selected</p>
+          </header>
+          <article class="card trend-card">
+            <p class="eyebrow">Coverage Trend</p>
+            <p class="muted trend-subtitle">Last 5 commits · default branch</p>
+            <div class="trend-chart-wrap">
+              <canvas id="trendChart"></canvas>
+            </div>
+          </article>
+        </section>
 
         <section class="stats-grid">
           <article class="card stat">

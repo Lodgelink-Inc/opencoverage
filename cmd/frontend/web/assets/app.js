@@ -28,6 +28,7 @@ let selectedProjectId = null;
 let selectedBranch = '';
 let availableBranches = [];
 let heatmapItems = [];
+let trendChart = null;
 
 refreshProjects.addEventListener('click', () => loadProjects());
 openHeatmap.addEventListener('click', () => {
@@ -130,7 +131,8 @@ async function selectProject(projectId) {
   selectedProjectName.textContent = project?.name || project?.projectKey || 'Project';
   selectedProjectMeta.textContent = `${project?.projectKey || ''} - default branch: ${project?.defaultBranch || 'main'} - threshold: ${pct(project?.globalThresholdPercent)}`;
 
-  await Promise.all([loadBranches(projectId), loadRecentRuns(projectId)]);
+  const defaultBranch = project?.defaultBranch || 'main';
+  await Promise.all([loadBranches(projectId), loadRecentRuns(projectId), loadTrendChart(projectId, defaultBranch)]);
   await loadLatestComparison(projectId);
 }
 
@@ -324,6 +326,85 @@ async function loadLatestComparison(projectId) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td colspan="5" class="muted">${err.message}</td>`;
     packagesBody.appendChild(tr);
+  }
+}
+
+async function loadTrendChart(projectId, defaultBranch) {
+  const canvas = document.getElementById('trendChart');
+  if (!canvas) return;
+
+  try {
+    const url = new URL(`/api/projects/${projectId}/coverage-runs`, window.location.origin);
+    url.searchParams.set('branch', defaultBranch);
+    url.searchParams.set('page', '1');
+    url.searchParams.set('pageSize', '5');
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(`failed to load trend data (${res.status})`);
+    const data = await res.json();
+
+    // API returns newest first; reverse for left-to-right chronological order
+    const runs = [...(data.items || [])].reverse();
+    const labels = runs.map(r => r.commitSha.slice(0, 7));
+    const values = runs.map(r => r.totalCoveragePercent);
+
+    if (trendChart) {
+      trendChart.destroy();
+      trendChart = null;
+    }
+
+    if (values.length === 0) return;
+
+    const minVal = Math.max(0, Math.min(...values) - 5);
+    const maxVal = Math.min(100, Math.max(...values) + 5);
+
+    trendChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Coverage %',
+          data: values,
+          borderColor: '#14d8ff',
+          backgroundColor: 'rgba(20, 216, 255, 0.08)',
+          pointBackgroundColor: '#14d8ff',
+          pointBorderColor: '#14d8ff',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.3,
+          fill: true,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` ${ctx.raw.toFixed(2)}%`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(39, 52, 81, 0.5)' },
+            ticks: { color: '#a4b2cf', font: { family: 'JetBrains Mono', size: 11 } },
+          },
+          y: {
+            min: minVal,
+            max: maxVal,
+            grid: { color: 'rgba(39, 52, 81, 0.5)' },
+            ticks: {
+              color: '#a4b2cf',
+              font: { family: 'Space Grotesk', size: 11 },
+              callback: (v) => `${v}%`,
+            },
+          },
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Error loading trend chart:', err);
   }
 }
 
