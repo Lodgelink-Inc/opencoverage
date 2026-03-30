@@ -27,6 +27,20 @@ In your GitHub repository settings, add:
   (Same as API_KEY_SECRET from coverage-api deployment)
   ```
 
+### 2. Configure Optional Repository Variables
+
+If you want to avoid hardcoding project metadata in the workflow, add GitHub Actions repository variables:
+
+- `COVERAGE_PROJECT_KEY` (optional)
+- `COVERAGE_PROJECT_NAME` (optional)
+- `COVERAGE_PROJECT_GROUP` (optional)
+
+These can be set in:
+
+1. **Settings > Secrets and variables > Actions > Variables**
+
+If omitted, the examples below fall back to repository-derived defaults.
+
 ## Workflow Example
 
 Create `.github/workflows/coverage.yml`:
@@ -39,6 +53,11 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+
+env:
+  COVERAGE_PROJECT_KEY: ${{ vars.COVERAGE_PROJECT_KEY }}
+  COVERAGE_PROJECT_NAME: ${{ vars.COVERAGE_PROJECT_NAME }}
+  COVERAGE_PROJECT_GROUP: ${{ vars.COVERAGE_PROJECT_GROUP }}
 
 jobs:
   test:
@@ -62,12 +81,16 @@ jobs:
 
       - name: Generate coverage payload
         run: |
+          PROJECT_KEY="${COVERAGE_PROJECT_KEY:-${{ github.repository }}}"
+          PROJECT_NAME="${COVERAGE_PROJECT_NAME:-${{ github.event.repository.name }}}"
+          PROJECT_GROUP="${COVERAGE_PROJECT_GROUP:-backend}"
+
           coveragecli \
             -coverprofile coverage.out \
             -out coverage-upload.json \
-            -project-key "${{ github.repository }}" \
-            -project-name "${{ github.event.repository.name }}" \
-            -project-group "backend" \
+            -project-key "$PROJECT_KEY" \
+            -project-name "$PROJECT_NAME" \
+            -project-group "$PROJECT_GROUP" \
             -branch "${{ github.ref_name }}" \
             -commit-sha "${{ github.sha }}" \
             -author "${{ github.actor }}" \
@@ -168,6 +191,11 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  COVERAGE_PROJECT_KEY: ${{ vars.COVERAGE_PROJECT_KEY }}
+  COVERAGE_PROJECT_NAME: ${{ vars.COVERAGE_PROJECT_NAME }}
+  COVERAGE_PROJECT_GROUP: ${{ vars.COVERAGE_PROJECT_GROUP }}
+
 jobs:
   coverage:
     runs-on: ubuntu-latest
@@ -189,11 +217,16 @@ jobs:
 
       - name: Generate coverage payload
         run: |
+          PROJECT_KEY="${COVERAGE_PROJECT_KEY:-${{ github.repository }}}"
+          PROJECT_NAME="${COVERAGE_PROJECT_NAME:-${{ github.event.repository.name }}}"
+          PROJECT_GROUP="${COVERAGE_PROJECT_GROUP:-backend}"
+
           coveragecli \
             -coverprofile coverage.out \
             -out coverage-upload.json \
-            -project-key "${{ github.repository }}" \
-            -project-name "${{ github.event.repository.name }}" \
+            -project-key "$PROJECT_KEY" \
+            -project-name "$PROJECT_NAME" \
+            -project-group "$PROJECT_GROUP" \
             -branch "${{ github.head_ref }}" \
             -commit-sha "${{ github.sha }}" \
             -author "${{ github.actor }}" \
@@ -254,6 +287,18 @@ jobs:
           echo "❌ Coverage is below threshold"
           exit 1
 ```
+
+## Configuring The Workflow
+
+The examples above make the project metadata configurable without editing the CLI command itself.
+
+You can control these values in two ways:
+
+1. Set repository variables:
+   `COVERAGE_PROJECT_KEY`, `COVERAGE_PROJECT_NAME`, `COVERAGE_PROJECT_GROUP`
+2. Edit the workflow-level `env:` block directly.
+
+If you do not want to send a group, remove the `-project-group "$PROJECT_GROUP"` flag from the workflow step.
 
 ## CLI Installation Tips
 
