@@ -141,7 +141,8 @@ async function selectProject(projectId) {
 
   const defaultBranch = project?.defaultBranch || 'main';
   const branches = await loadBranches(projectId);
-  await Promise.all([loadRecentRuns(projectId), loadTrendChart(projectId, defaultBranch, branches)]);
+  const threshold = Number(project?.globalThresholdPercent);
+  await Promise.all([loadRecentRuns(projectId), loadTrendChart(projectId, defaultBranch, branches, threshold)]);
   await loadLatestComparison(projectId);
 }
 
@@ -528,7 +529,7 @@ async function loadLatestComparison(projectId) {
   }
 }
 
-async function loadTrendChart(projectId, defaultBranch, branches = availableBranches) {
+async function loadTrendChart(projectId, defaultBranch, branches = availableBranches, thresholdPercent) {
   const canvas = document.getElementById('trendChart');
   if (!canvas) return;
 
@@ -562,6 +563,23 @@ async function loadTrendChart(projectId, defaultBranch, branches = availableBran
     const datasets = seriesResults
       .filter((result) => result.data.length > 0)
       .map((result, index) => buildTrendDataset(result.branchName, result.data, trendColorForIndex(index, result.branchName === defaultBranch)));
+
+    if (Number.isFinite(thresholdPercent)) {
+      const thresholdData = buildThresholdDataset(seriesResults, thresholdPercent);
+      if (thresholdData.length > 0) {
+        datasets.push({
+          label: `Threshold (${thresholdPercent.toFixed(2)}%)`,
+          data: thresholdData,
+          borderColor: '#ffb347',
+          borderDash: [6, 6],
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          fill: false,
+          tension: 0,
+        });
+      }
+    }
 
     const allValues = datasets.flatMap((dataset) => dataset.data.map((point) => point.y));
     if (allValues.length === 0) return;
@@ -673,6 +691,20 @@ function buildTrendDataset(label, data, colors) {
     tension: 0.3,
     fill: false,
   };
+}
+
+function buildThresholdDataset(seriesResults, thresholdPercent) {
+  const points = seriesResults.flatMap((result) => result.data);
+  if (points.length === 0) return [];
+
+  const xValues = points.map((point) => point.x);
+  const minX = Math.min(...xValues);
+  const maxX = Math.max(...xValues);
+
+  return [
+    { x: minX, y: thresholdPercent, branch: 'threshold', runTimestamp: new Date(minX).toISOString() },
+    { x: maxX, y: thresholdPercent, branch: 'threshold', runTimestamp: new Date(maxX).toISOString() },
+  ];
 }
 
 function getTrendBranches(defaultBranch, branches) {
