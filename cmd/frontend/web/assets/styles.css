@@ -191,7 +191,8 @@ h3 {
   position: relative;
   flex: 1;
   min-height: 110px;
-  width: min(50%, 520px);
+  max-height: 200px;
+  width: min(70%);
   align-self: center;
 }
 
