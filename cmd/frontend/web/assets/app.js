@@ -182,10 +182,16 @@ async function loadHeatmap() {
   const items = await Promise.all(
     sourceProjects.map(async (project) => {
       try {
-        const res = await fetch(`/api/projects/${project.id}/coverage-runs/latest-comparison`);
-        if (!res.ok) throw new Error(`failed to load latest comparison (${res.status})`);
+        const defaultBranch = project.defaultBranch || 'main';
+        const url = new URL(`/api/projects/${project.id}/coverage-runs`, window.location.origin);
+        url.searchParams.set('branch', defaultBranch);
+        url.searchParams.set('page', '1');
+        url.searchParams.set('pageSize', '2');
+        const res = await fetch(url.toString());
+        if (!res.ok) throw new Error(`failed to load default branch runs (${res.status})`);
         const data = await res.json();
-        return { project, comparison: data.comparison || null };
+        const runs = data.items || [];
+        return { project, comparison: buildHeatmapComparisonFromDefaultBranch(runs, project) };
       } catch (err) {
         return { project, comparison: null, error: err.message };
       }
@@ -194,6 +200,41 @@ async function loadHeatmap() {
 
   heatmapItems = items;
   renderHeatmap();
+}
+
+function buildHeatmapComparisonFromDefaultBranch(runs, project) {
+  if (!runs || runs.length === 0) {
+    return null;
+  }
+
+  const currentRun = runs[0];
+  const previousRun = runs[1] || null;
+  const current = Number(currentRun.totalCoveragePercent);
+  const previous = previousRun ? Number(previousRun.totalCoveragePercent) : null;
+  const thresholdPercent = Number(project?.globalThresholdPercent);
+
+  let deltaPercent = null;
+  let direction = 'equal';
+  if (Number.isFinite(current) && Number.isFinite(previous)) {
+    deltaPercent = current - previous;
+    if (deltaPercent > 0) direction = 'up';
+    else if (deltaPercent < 0) direction = 'down';
+  }
+
+  let thresholdStatus = 'unknown';
+  if (Number.isFinite(current) && Number.isFinite(thresholdPercent)) {
+    thresholdStatus = current >= thresholdPercent ? 'passed' : 'failed';
+  }
+
+  return {
+    baselineSource: 'previous_default_branch_commit',
+    previousTotalCoveragePercent: Number.isFinite(previous) ? previous : null,
+    currentTotalCoveragePercent: current,
+    deltaPercent,
+    direction,
+    thresholdPercent,
+    thresholdStatus,
+  };
 }
 
 function renderHeatmapLoading() {
@@ -205,11 +246,8 @@ function getGroupColorClass(groupName, groupItems) {
     return 'neutral';
   }
 
-  // Calculate average coverage for the group
   let totalCoverage = 0;
   let countWithCoverage = 0;
-  let upCount = 0;
-  let downCount = 0;
   let passedCount = 0;
   let failedCount = 0;
 
@@ -220,14 +258,7 @@ function getGroupColorClass(groupName, groupItems) {
       countWithCoverage++;
     }
 
-    const delta = Number(item.comparison?.deltaPercent);
     const threshold = item.comparison?.thresholdStatus;
-
-    if (Number.isFinite(delta) && delta >= 0) {
-      upCount++;
-    } else if (Number.isFinite(delta) && delta < 0) {
-      downCount++;
-    }
 
     if (threshold === 'passed') {
       passedCount++;
@@ -236,18 +267,13 @@ function getGroupColorClass(groupName, groupItems) {
     }
   }
 
-  // Decision logic: Use threshold status if available, otherwise use delta trend
   if (passedCount > failedCount) {
     return 'up';
-  } else if (failedCount > passedCount) {
-    return 'down';
-  } else if (upCount > downCount) {
-    return 'up';
-  } else if (downCount > upCount) {
+  }
+  if (failedCount > passedCount) {
     return 'down';
   }
 
-  // Default based on average coverage
   const avgCoverage = countWithCoverage > 0 ? totalCoverage / countWithCoverage : 0;
   return avgCoverage >= 80 ? 'up' : 'down';
 }
@@ -334,12 +360,12 @@ function buildHeatmapTile(item, options = {}) {
   const project = item.project;
   const name = project.name || project.projectKey;
   const current = Number(item.comparison?.currentTotalCoveragePercent);
-  const delta = Number(item.comparison?.deltaPercent);
+  const delta = typeof item.comparison?.deltaPercent === 'number' ? item.comparison.deltaPercent : null;
   const threshold = item.comparison?.thresholdStatus;
   const thresholdValue = Number(item.comparison?.thresholdPercent);
   const { compact = false } = options;
 
-  const trendClass = heatTrendClass(current, delta, threshold);
+  const trendClass = heatTileStatusClass(current, threshold);
   const size = tileSizeForCoverage(current);
   const classNames = ['heat-tile', trendClass];
 
@@ -361,22 +387,36 @@ function buildHeatmapTile(item, options = {}) {
   }
 
   const deltaText = Number.isFinite(delta) ? signedPct(delta) : '-';
+  const deltaArrow = heatDeltaArrow(delta);
   btn.innerHTML = `
     <span class="heat-name">${name}</span>
     <span class="heat-value">${Number.isFinite(current) ? pct(current) : '-'}</span>
     <span class="heat-threshold">Threshold ${Number.isFinite(thresholdValue) ? pct(thresholdValue) : '-'}</span>
-    <span class="heat-delta">${deltaText}</span>
+    <span class="heat-delta">${deltaArrow}<span>${deltaText}</span></span>
   `;
-  btn.title = `${name} | threshold=${threshold || 'unknown'} | delta=${deltaText}`;
+  btn.title = `${name} | branch=${project.defaultBranch || 'main'} | threshold=${threshold || 'unknown'} | delta=${deltaText}`;
   btn.addEventListener('click', async () => selectProject(project.id));
   return btn;
 }
 
-function heatTrendClass(current, delta, threshold) {
+function heatTileStatusClass(current, threshold) {
   if (!Number.isFinite(current)) return 'neutral';
-  if ((Number.isFinite(delta) && delta < 0) || threshold === 'failed') return 'down';
-  if ((Number.isFinite(delta) && delta >= 0) || threshold === 'passed') return 'up';
+  if (threshold === 'passed') return 'up';
+  if (threshold === 'failed') return 'down';
   return 'neutral';
+}
+
+function heatDeltaArrow(delta) {
+  if (!Number.isFinite(delta)) {
+    return '<span class="heat-delta-indicator neutral">•</span>';
+  }
+  if (delta < 0) {
+    return '<span class="heat-delta-indicator down">▼</span>';
+  }
+  if (delta > 0) {
+    return '<span class="heat-delta-indicator up">▲</span>';
+  }
+  return '<span class="heat-delta-indicator neutral">•</span>';
 }
 
 function tileSizeForCoverage(current) {

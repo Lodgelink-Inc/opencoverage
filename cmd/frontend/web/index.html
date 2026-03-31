@@ -36,6 +36,13 @@
             <option value="">Loading projects...</option>
           </select>
         </article>
+        <div class="sidebar-footer card">
+          <div class="app-version-block">
+            <p class="eyebrow">App Version</p>
+            <p id="appVersion" class="app-version-value">v-</p>
+          </div>
+          <a id="upgradeLink" class="upgrade-link" href="https://github.com/arxdsilva/opencoverage/releases" target="_blank" rel="noreferrer" aria-label="Upgrade available" title="Upgrade available" hidden>⇪</a>
+        </div>
       </aside>
 
       <section class="content">
@@ -156,7 +163,7 @@
             <div class="heatmap-overlay-head">
               <div class="table-head heatmap-head">
                 <h3>Projects Heatmap</h3>
-                <p class="muted">All projects. Red = down/below threshold. Green = up/equal or threshold passed.</p>
+                <p class="muted">All projects. Heatmap compares the last two commits on each project's default branch. Tile color = threshold status (green passed, red failed). Delta arrow = trend direction.</p>
               </div>
               <button id="closeHeatmap" class="btn">Close</button>
             </div>

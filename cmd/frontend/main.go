@@ -2,12 +2,14 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,6 +22,9 @@ type config struct {
 	APIBaseURL   string
 	APIKeyHeader string
 	APIKeySecret string
+	AppVersion   string
+	LatestVersion string
+	UpgradeURL   string
 }
 
 func main() {
@@ -36,6 +41,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", http.StripPrefix("/", http.FileServer(http.FS(frontendFS))))
+	mux.HandleFunc("/api/app-meta", appMetaHandler(cfg))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -68,6 +74,9 @@ func loadConfig() config {
 		APIBaseURL:   strings.TrimRight(envOrDefault("API_BASE_URL", "http://localhost:8080"), "/"),
 		APIKeyHeader: envOrDefault("API_KEY_HEADER", "X-API-Key"),
 		APIKeySecret: envOrDefault("API_KEY_SECRET", "dev-local-key"),
+		AppVersion:   envOrDefault("APP_VERSION", "dev"),
+		LatestVersion: strings.TrimSpace(os.Getenv("APP_LATEST_VERSION")),
+		UpgradeURL:   envOrDefault("APP_UPGRADE_URL", "https://github.com/arxdsilva/opencoverage/releases"),
 	}
 }
 
@@ -114,6 +123,92 @@ func proxyHandler(cfg config) http.HandlerFunc {
 		w.WriteHeader(resp.StatusCode)
 		_, _ = io.Copy(w, resp.Body)
 	}
+}
+
+type appMetaResponse struct {
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion,omitempty"`
+	UpgradeURL     string `json:"upgradeUrl,omitempty"`
+	HasUpgrade     bool   `json:"hasUpgrade"`
+}
+
+func appMetaHandler(cfg config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, appMetaResponse{
+			CurrentVersion: cfg.AppVersion,
+			LatestVersion:  cfg.LatestVersion,
+			UpgradeURL:     cfg.UpgradeURL,
+			HasUpgrade:     isNewerVersion(cfg.LatestVersion, cfg.AppVersion),
+		})
+	}
+}
+
+func isNewerVersion(latest, current string) bool {
+	latest = strings.TrimSpace(strings.TrimPrefix(latest, "v"))
+	current = strings.TrimSpace(strings.TrimPrefix(current, "v"))
+	if latest == "" || current == "" || latest == current {
+		return false
+	}
+
+	latestParts, latestOK := parseVersionParts(latest)
+	currentParts, currentOK := parseVersionParts(current)
+	if !latestOK || !currentOK {
+		return latest != current
+	}
+
+	maxLen := len(latestParts)
+	if len(currentParts) > maxLen {
+		maxLen = len(currentParts)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var latestPart, currentPart int
+		if i < len(latestParts) {
+			latestPart = latestParts[i]
+		}
+		if i < len(currentParts) {
+			currentPart = currentParts[i]
+		}
+		if latestPart > currentPart {
+			return true
+		}
+		if latestPart < currentPart {
+			return false
+		}
+	}
+
+	return false
+}
+
+func parseVersionParts(version string) ([]int, bool) {
+	tokens := strings.FieldsFunc(version, func(r rune) bool {
+		return r == '.' || r == '-' || r == '+' || r == '_'
+	})
+	if len(tokens) == 0 {
+		return nil, false
+	}
+
+	parts := make([]int, 0, len(tokens))
+	for _, token := range tokens {
+		value, err := strconv.Atoi(token)
+		if err != nil {
+			return nil, false
+		}
+		parts = append(parts, value)
+	}
+
+	return parts, true
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func requestLogger(next http.Handler) http.Handler {

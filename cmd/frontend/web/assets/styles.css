@@ -628,7 +628,7 @@ td.code {
 }
 
 .heat-name {
-  font-size: 10px;
+  font-size: clamp(10px, 0.38vw + 8px, 15px);
   font-weight: 600;
   line-height: 1.1;
   overflow: hidden;
@@ -638,22 +638,43 @@ td.code {
 }
 
 .heat-value {
-  font-size: 16px;
+  font-size: clamp(16px, 1.15vw + 8px, 34px);
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.05;
   font-family: "JetBrains Mono", monospace;
 }
 
 .heat-threshold {
-  font-size: 8px;
+  font-size: clamp(8px, 0.28vw + 6px, 12px);
   font-family: "JetBrains Mono", monospace;
   opacity: 0.8;
 }
 
 .heat-delta {
-  font-size: 9px;
+  font-size: clamp(9px, 0.32vw + 6px, 13px);
   font-family: "JetBrains Mono", monospace;
   opacity: 0.85;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.heat-delta-indicator {
+  display: inline-block;
+  font-size: clamp(10px, 0.34vw + 7px, 14px);
+  line-height: 1;
+}
+
+.heat-delta-indicator.up {
+  color: var(--green);
+}
+
+.heat-delta-indicator.down {
+  color: var(--red);
+}
+
+.heat-delta-indicator.neutral {
+  color: rgba(236, 242, 255, 0.7);
 }
 
 /* Group status colors - Green (up/passed) and Red (down/failed) */
