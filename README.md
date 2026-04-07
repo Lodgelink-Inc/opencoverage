@@ -64,6 +64,7 @@ Requirements:
 Core environment variables:
 
 - `DATABASE_URL` (required)
+- `MIGRATIONS_DIR` (default `./migrations`)
 - `API_KEY_SECRET` (required)
 - `SERVER_ADDR` (default `:8080`)
 - `API_KEY_HEADER` (default `X-API-Key`)

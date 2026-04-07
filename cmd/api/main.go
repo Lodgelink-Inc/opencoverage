@@ -16,6 +16,7 @@ import (
 	"github.com/arxdsilva/opencoverage/internal/platform/clock"
 	"github.com/arxdsilva/opencoverage/internal/platform/config"
 	"github.com/arxdsilva/opencoverage/internal/platform/idgen"
+	"github.com/arxdsilva/opencoverage/internal/platform/migrations"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -41,6 +42,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+
+	if err := migrations.Up(ctx, cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
+		slog.Error("startup_failed", "stage", "run_migrations", "error", err)
+		os.Exit(1)
+	}
 
 	if err := pool.Ping(ctx); err != nil {
 		slog.Error("startup_failed", "stage", "ping_db", "error", err)

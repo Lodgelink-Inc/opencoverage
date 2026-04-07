@@ -11,6 +11,7 @@ import (
 type Config struct {
 	ServerAddr      string
 	DatabaseURL     string
+	MigrationsDir   string
 	APIKeyHeader    string
 	APIKeySecret    string
 	ShutdownTimeout time.Duration
@@ -20,6 +21,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		ServerAddr:      getEnv("SERVER_ADDR", ":8080"),
 		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		MigrationsDir:   getEnv("MIGRATIONS_DIR", "./migrations"),
 		APIKeyHeader:    getEnv("API_KEY_HEADER", "X-API-Key"),
 		APIKeySecret:    os.Getenv("API_KEY_SECRET"),
 		ShutdownTimeout: getEnvDuration("SHUTDOWN_TIMEOUT_SECONDS", 10),
@@ -57,6 +59,9 @@ func (c Config) Validate() error {
 	}
 	if c.DatabaseURL == "" {
 		return fmt.Errorf("database url cannot be empty")
+	}
+	if c.MigrationsDir == "" {
+		return fmt.Errorf("migrations dir cannot be empty")
 	}
 	if c.APIKeySecret == "" {
 		return fmt.Errorf("api key secret cannot be empty")
