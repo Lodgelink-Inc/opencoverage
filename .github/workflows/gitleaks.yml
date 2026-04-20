@@ -1,0 +1,13 @@
+name: Gitleaks
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  run-gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+    - name: Run Gitleaks
+      uses: Lodgelink-Inc/devsecops/.github/actions/gitleaks-action@v1
