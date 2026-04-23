@@ -388,30 +388,16 @@ async function loadHeatmap() {
 }
 
 async function loadHeatmapComparison(project) {
-  // Prefer server comparison logic so heatmap uses the same baseline rules as the detail view.
-  try {
-    const compareRes = await fetch(`/api/projects/${project.id}/coverage-runs/latest-comparison`);
-    if (compareRes.ok) {
-      const compareData = await compareRes.json();
-      const comparison = normalizeHeatmapComparison(compareData?.comparison);
-      if (comparison) {
-        return comparison;
-      }
-    }
-  } catch (err) {
-    // Fall back below.
-  }
-
   const defaultBranch = project.defaultBranch || 'main';
   const runsUrl = new URL(`/api/projects/${project.id}/coverage-runs`, window.location.origin);
   runsUrl.searchParams.set('branch', defaultBranch);
   runsUrl.searchParams.set('page', '1');
   runsUrl.searchParams.set('pageSize', '2');
   const runsRes = await fetch(runsUrl.toString());
-  if (!runsRes.ok) throw new Error(`failed to load default branch runs (${runsRes.status})`);
+  if (!runsRes.ok) throw new Error(`failed to load heatmap comparison runs (${runsRes.status})`);
   const runsData = await runsRes.json();
-  const fallbackComparison = buildHeatmapComparisonFromDefaultBranch(runsData.items || [], project);
-  return normalizeHeatmapComparison(fallbackComparison);
+  const comparison = buildHeatmapComparisonFromDefaultBranch(runsData.items || [], project);
+  return normalizeHeatmapComparison(comparison);
 }
 
 function normalizeHeatmapComparison(comparison) {
@@ -466,7 +452,7 @@ function buildHeatmapComparisonFromDefaultBranch(runs, project) {
   }
 
   return {
-    baselineSource: 'previous_default_branch_commit',
+    baselineSource: 'previous_main_branch_commit',
     previousTotalCoveragePercent: Number.isFinite(previous) ? previous : null,
     currentTotalCoveragePercent: current,
     deltaPercent,
@@ -485,36 +471,26 @@ function getGroupColorClass(groupName, groupItems) {
     return 'neutral';
   }
 
-  let totalCoverage = 0;
-  let countWithCoverage = 0;
-  let passedCount = 0;
-  let failedCount = 0;
+  let upCount = 0;
+  let downCount = 0;
 
   for (const item of groupItems) {
-    const current = Number(item.comparison?.currentTotalCoveragePercent);
-    if (Number.isFinite(current)) {
-      totalCoverage += current;
-      countWithCoverage++;
-    }
-
-    const threshold = item.comparison?.thresholdStatus;
-
-    if (threshold === 'passed') {
-      passedCount++;
-    } else if (threshold === 'failed') {
-      failedCount++;
+    const direction = item.comparison?.direction;
+    if (direction === 'up') {
+      upCount++;
+    } else if (direction === 'down') {
+      downCount++;
     }
   }
 
-  if (passedCount > failedCount) {
+  if (upCount > downCount) {
     return 'up';
   }
-  if (failedCount > passedCount) {
+  if (downCount > upCount) {
     return 'down';
   }
 
-  const avgCoverage = countWithCoverage > 0 ? totalCoverage / countWithCoverage : 0;
-  return avgCoverage >= 80 ? 'up' : 'down';
+  return 'neutral';
 }
 
 function renderHeatmap() {
