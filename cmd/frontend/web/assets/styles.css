@@ -387,10 +387,15 @@ h3 {
 }
 
 .integration-chain-connector {
-  width: 28px;
-  height: 2px;
-  background: linear-gradient(90deg, rgba(20, 216, 255, 0.28), rgba(39, 52, 81, 0.9));
-  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.9;
+  user-select: none;
 }
 
 .integration-chain-label {

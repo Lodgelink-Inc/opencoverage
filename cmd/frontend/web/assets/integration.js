@@ -700,6 +700,9 @@ function renderIntegrationRunChain(items) {
     if (index < items.length - 1) {
       const connector = document.createElement('span');
       connector.className = 'integration-chain-connector';
+      connector.textContent = '←';
+      connector.title = 'Oldest to newest';
+      connector.setAttribute('aria-hidden', 'true');
       track.appendChild(connector);
     }
   });
