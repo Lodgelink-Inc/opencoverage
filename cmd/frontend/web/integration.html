@@ -156,13 +156,13 @@
               <div class="heatmap-overlay-head">
                 <div class="table-head heatmap-head">
                   <h3>Integration Heatmap</h3>
-                  <p class="muted">All projects by group. Green = pass, red = fail. Hover for details.</p>
+                  <p class="muted">All projects by group (default branch only). ✅ = pass, ❌ = fail. Hover for details.</p>
                   <p class="muted heatmap-time-direction">Run order: oldest on the left, newest on the right.</p>
                 </div>
                 <div class="heatmap-overlay-tools integration-heatmap-tools">
                   <div class="integration-filters">
-                    <select id="heatmapBranchFilter" class="branch-select">
-                      <option value="">All branches</option>
+                    <select id="heatmapBranchFilter" class="branch-select" disabled>
+                      <option value="">Default branches only</option>
                     </select>
                     <select id="heatmapStatusFilter" class="branch-select">
                       <option value="">All statuses</option>

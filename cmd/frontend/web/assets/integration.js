@@ -800,12 +800,16 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+function getProjectDefaultBranch(projectId) {
+  const project = projects.find((p) => p.id === projectId);
+  return project?.defaultBranch || 'main';
+}
+
 async function loadHeatmap() {
   integrationHeatmap.innerHTML = '<p class="muted">Loading heatmap…</p>';
   try {
     const url = new URL('/api/integration-test-runs/heatmap', window.location.origin);
     url.searchParams.set('runsPerProject', '10');
-    if (heatmapBranchFilter.value) url.searchParams.set('branch', heatmapBranchFilter.value);
     if (heatmapStatusFilter.value) url.searchParams.set('status', heatmapStatusFilter.value);
 
     const res = await fetch(url.toString());
@@ -835,9 +839,12 @@ function renderHeatmap(groups) {
     groupEl.appendChild(groupLabel);
 
     for (const project of group.projects || []) {
+      const defaultBranch = getProjectDefaultBranch(project.projectId);
+      const runs = (project.runs || []).filter((run) => run.branch === defaultBranch);
+
       const rowEl = document.createElement('div');
       rowEl.className = 'integration-heatmap-project-row';
-      const newestRun = Array.isArray(project.runs) && project.runs.length > 0 ? project.runs[0] : null;
+      const newestRun = runs.length > 0 ? runs[0] : null;
       if (newestRun?.status === 'passed') {
         rowEl.classList.add('newest-passed');
       } else if (newestRun?.status === 'failed') {
@@ -853,12 +860,12 @@ function renderHeatmap(groups) {
       const tilesEl = document.createElement('div');
       tilesEl.className = 'integration-heatmap-tiles';
 
-      const runs = project.runs || [];
       const displayRuns = [...runs].reverse();
       displayRuns.forEach((run, index) => {
         const tile = document.createElement('button');
         tile.type = 'button';
         tile.className = `integration-heatmap-tile ${run.status === 'passed' ? 'passed' : 'failed'}`;
+        tile.textContent = run.status === 'passed' ? '✅' : '❌';
         if (selectedProjectId === project.projectId && selectedIntegrationRunId === run.id) {
           tile.classList.add('selected');
         }
