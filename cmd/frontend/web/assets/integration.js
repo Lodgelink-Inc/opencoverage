@@ -11,6 +11,9 @@ const integrationDuration = document.getElementById('integrationDuration');
 const integrationBranchFilter = document.getElementById('integrationBranchFilter');
 const integrationStatusFilter = document.getElementById('integrationStatusFilter');
 const integrationReload = document.getElementById('integrationReload');
+const integrationAutoRefreshInterval = document.getElementById('integrationAutoRefreshInterval');
+const integrationAutoRefreshStatus = document.getElementById('integrationAutoRefreshStatus');
+const integrationAutoRefreshProgressBar = document.getElementById('integrationAutoRefreshProgressBar');
 const integrationRunChain = document.getElementById('integrationRunChain');
 const integrationRunsBody = document.getElementById('integrationRunsBody');
 const integrationFailedSpecsBody = document.getElementById('integrationFailedSpecsBody');
@@ -30,8 +33,27 @@ let selectedProjectId = null;
 let selectedIntegrationRunId = null;
 let currentIntegrationRunItems = [];
 const sidebarCollapsedKey = 'opencoverage.sidebarCollapsed.integration';
+const integrationAutoRefreshStorageKey = 'opencoverage.autoRefresh.integration';
+const integrationAutoRefreshIntervals = Object.freeze({
+  off: 0,
+  '15s': 15000,
+  '30s': 30000,
+  '60s': 60000,
+  '5m': 300000,
+});
+let integrationRefreshTimeoutId = 0;
+let integrationRefreshInFlight = false;
+let integrationRefreshCountdownIntervalId = 0;
+let integrationNextRefreshAt = 0;
+let integrationRefreshDurationMs = 0;
 
-refreshProjects.addEventListener('click', () => loadProjects());
+refreshProjects.addEventListener('click', async () => {
+  await performIntegrationRefresh('manual');
+});
+integrationAutoRefreshInterval.addEventListener('change', () => {
+  persistIntegrationAutoRefreshInterval(integrationAutoRefreshInterval.value);
+  scheduleIntegrationAutoRefresh();
+});
 projectSelector.addEventListener('change', async (e) => {
   await selectProject(e.target.value);
 });
@@ -45,7 +67,9 @@ integrationStatusFilter.addEventListener('change', async () => {
   await loadIntegrationRuns(selectedProjectId);
 });
 integrationReload.addEventListener('click', async () => {
-  await loadIntegrationScreen(selectedProjectId);
+  await runWithButtonBusy(integrationReload, 'Reload', 'Reloading...', async () => {
+    await loadIntegrationScreen(selectedProjectId, { preferredRunId: selectedIntegrationRunId });
+  });
 });
 openIntegrationHeatmap.addEventListener('click', async () => {
   const isOpen = integrationHeatmapOverlay.classList.contains('open');
@@ -62,17 +86,28 @@ heatmapStatusFilter.addEventListener('change', async () => {
   await loadHeatmap();
 });
 heatmapReload.addEventListener('click', async () => {
-  await loadHeatmap();
+  await runWithButtonBusy(heatmapReload, 'Reload', 'Reloading...', async () => {
+    await loadHeatmap();
+  });
 });
 toggleSidebar.addEventListener('click', () => {
   const shouldCollapse = !appShell.classList.contains('sidebar-collapsed');
   setSidebarCollapsed(shouldCollapse);
 });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearIntegrationAutoRefresh();
+    updateIntegrationAutoRefreshStatus();
+    return;
+  }
+  scheduleIntegrationAutoRefresh();
+});
 
 initializeSidebarState();
+initializeIntegrationAutoRefreshControl();
 
 (async () => {
-  await loadProjects();
+  await performIntegrationRefresh('initial');
   if (getQueryParam('heatmap') === 'open') {
     toggleIntegrationHeatmapOverlay(true);
     await loadHeatmap();
@@ -82,6 +117,184 @@ initializeSidebarState();
 function getQueryParam(name) {
   const params = new URLSearchParams(window.location.search);
   return params.get(name);
+}
+
+function initializeIntegrationAutoRefreshControl() {
+  const persisted = window.localStorage.getItem(integrationAutoRefreshStorageKey);
+  const nextValue = Object.prototype.hasOwnProperty.call(integrationAutoRefreshIntervals, persisted) ? persisted : 'off';
+  integrationAutoRefreshInterval.value = nextValue;
+  updateIntegrationAutoRefreshStatus();
+}
+
+function getIntegrationAutoRefreshIntervalValue() {
+  const selectedValue = integrationAutoRefreshInterval.value;
+  return Object.prototype.hasOwnProperty.call(integrationAutoRefreshIntervals, selectedValue) ? selectedValue : 'off';
+}
+
+function getIntegrationAutoRefreshIntervalMs() {
+  return integrationAutoRefreshIntervals[getIntegrationAutoRefreshIntervalValue()] || 0;
+}
+
+function persistIntegrationAutoRefreshInterval(value) {
+  const nextValue = Object.prototype.hasOwnProperty.call(integrationAutoRefreshIntervals, value) ? value : 'off';
+  window.localStorage.setItem(integrationAutoRefreshStorageKey, nextValue);
+}
+
+function clearIntegrationAutoRefresh() {
+  if (!integrationRefreshTimeoutId) return;
+  window.clearTimeout(integrationRefreshTimeoutId);
+  integrationRefreshTimeoutId = 0;
+}
+
+function setIntegrationAutoRefreshProgress(progressRatio) {
+  if (!integrationAutoRefreshProgressBar) return;
+  const safeRatio = Math.max(0, Math.min(1, progressRatio));
+  integrationAutoRefreshProgressBar.style.transform = `scaleX(${safeRatio})`;
+}
+
+function clearIntegrationCountdownTicker() {
+  if (!integrationRefreshCountdownIntervalId) return;
+  window.clearInterval(integrationRefreshCountdownIntervalId);
+  integrationRefreshCountdownIntervalId = 0;
+}
+
+function formatRemainingTime(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+function updateIntegrationAutoRefreshStatus() {
+  if (!integrationAutoRefreshStatus) return;
+
+  const intervalLabel = getIntegrationAutoRefreshIntervalValue();
+  if (intervalLabel === 'off') {
+    integrationAutoRefreshStatus.textContent = 'Auto refresh is off.';
+    setIntegrationAutoRefreshProgress(0);
+    return;
+  }
+
+  if (document.hidden) {
+    integrationAutoRefreshStatus.textContent = `Paused (${intervalLabel}) while tab is hidden.`;
+    setIntegrationAutoRefreshProgress(0);
+    return;
+  }
+
+  if (integrationRefreshInFlight) {
+    integrationAutoRefreshStatus.textContent = `Refreshing now (${intervalLabel}).`;
+    setIntegrationAutoRefreshProgress(0);
+    return;
+  }
+
+  if (!integrationNextRefreshAt) {
+    integrationAutoRefreshStatus.textContent = `Scheduled every ${intervalLabel}.`;
+    setIntegrationAutoRefreshProgress(0);
+    return;
+  }
+
+  const remainingMs = integrationNextRefreshAt - Date.now();
+  integrationAutoRefreshStatus.textContent = `Next refresh in ${formatRemainingTime(remainingMs)} (${intervalLabel}).`;
+  const denominator = integrationRefreshDurationMs || getIntegrationAutoRefreshIntervalMs() || 1;
+  setIntegrationAutoRefreshProgress(remainingMs / denominator);
+}
+
+function scheduleIntegrationAutoRefresh() {
+  clearIntegrationAutoRefresh();
+  clearIntegrationCountdownTicker();
+  integrationNextRefreshAt = 0;
+  integrationRefreshDurationMs = 0;
+
+  const intervalMs = getIntegrationAutoRefreshIntervalMs();
+  if (!intervalMs || document.hidden) {
+    updateIntegrationAutoRefreshStatus();
+    return;
+  }
+
+  integrationRefreshDurationMs = intervalMs;
+  integrationNextRefreshAt = Date.now() + intervalMs;
+  setIntegrationAutoRefreshProgress(1);
+  updateIntegrationAutoRefreshStatus();
+  integrationRefreshCountdownIntervalId = window.setInterval(() => {
+    updateIntegrationAutoRefreshStatus();
+  }, 200);
+
+  integrationRefreshTimeoutId = window.setTimeout(async () => {
+    if (document.hidden || integrationRefreshInFlight) {
+      scheduleIntegrationAutoRefresh();
+      return;
+    }
+
+    await performIntegrationRefresh('auto');
+  }, intervalMs);
+}
+
+function setIntegrationRefreshButtonBusy(busy) {
+  refreshProjects.disabled = busy;
+  refreshProjects.textContent = busy ? 'Refreshing...' : 'Refresh';
+}
+
+async function runWithButtonBusy(button, idleText, busyText, action) {
+  if (integrationRefreshInFlight) {
+    return false;
+  }
+
+  integrationRefreshInFlight = true;
+  clearIntegrationAutoRefresh();
+  clearIntegrationCountdownTicker();
+  integrationNextRefreshAt = 0;
+  integrationRefreshDurationMs = 0;
+  updateIntegrationAutoRefreshStatus();
+  button.disabled = true;
+  button.textContent = busyText;
+  try {
+    await action();
+    return true;
+  } finally {
+    button.disabled = false;
+    button.textContent = idleText;
+    integrationRefreshInFlight = false;
+    scheduleIntegrationAutoRefresh();
+  }
+}
+
+async function performIntegrationRefresh(source = 'manual') {
+  if (integrationRefreshInFlight) {
+    return false;
+  }
+
+  integrationRefreshInFlight = true;
+  clearIntegrationAutoRefresh();
+  clearIntegrationCountdownTicker();
+  integrationNextRefreshAt = 0;
+  integrationRefreshDurationMs = 0;
+  updateIntegrationAutoRefreshStatus();
+
+  const heatmapWasOpen = integrationHeatmapOverlay.classList.contains('open');
+
+  if (source === 'manual') {
+    setIntegrationRefreshButtonBusy(true);
+  }
+
+  try {
+    await loadProjects();
+
+    if (heatmapWasOpen) {
+      await loadHeatmap();
+    }
+
+    return true;
+  } finally {
+    if (source === 'manual') {
+      setIntegrationRefreshButtonBusy(false);
+    }
+
+    integrationRefreshInFlight = false;
+    scheduleIntegrationAutoRefresh();
+  }
 }
 
 function toggleIntegrationHeatmapOverlay(open) {
@@ -121,13 +334,32 @@ async function loadProjects() {
 
     projects = items;
     filteredProjects = items;
+
+    const nextSelectedProjectId = items.some((project) => project.id === selectedProjectId)
+      ? selectedProjectId
+      : (items[0]?.id || null);
+
     renderProjectSelector();
 
-    if (!selectedProjectId && projects.length > 0) {
-      await selectProject(projects[0].id);
+    if (!nextSelectedProjectId) {
+      selectedProjectId = null;
+      selectedIntegrationRunId = null;
+      integrationScreenProjectTitle.textContent = 'No projects found';
+      integrationScreenProjectMeta.textContent = 'Upload integration runs to populate this view.';
+      integrationRunChain.innerHTML = '<p class="muted">No integration runs found.</p>';
+      integrationRunsBody.innerHTML = '<tr><td colspan="7" class="muted">No integration runs found.</td></tr>';
+      integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">No run selected.</td></tr>';
+      integrationStatus.textContent = '-';
+      integrationStatus.className = 'value';
+      integrationPassRate.textContent = '-';
+      integrationFailedSpecsCount.textContent = '-';
+      integrationDelta.textContent = '-';
+      integrationDuration.textContent = '-';
+    } else if (nextSelectedProjectId === selectedProjectId) {
+      await selectProject(nextSelectedProjectId, { preferredRunId: selectedIntegrationRunId });
       renderProjectSelector();
-    } else if (selectedProjectId) {
-      await selectProject(selectedProjectId);
+    } else {
+      await selectProject(nextSelectedProjectId);
       renderProjectSelector();
     }
   } catch (err) {
@@ -184,7 +416,9 @@ function renderIntegrationBranchFilter(project) {
   integrationBranchFilter.value = branches.includes(selectedValue) ? selectedValue : '';
 }
 
-async function selectProject(projectId) {
+async function selectProject(projectId, options = {}) {
+  const { preferredRunId = null } = options;
+
   selectedProjectId = projectId;
   projectSearchInput.value = '';
 
@@ -193,10 +427,12 @@ async function selectProject(projectId) {
   integrationScreenProjectMeta.textContent = `${project?.projectKey || ''} - default branch: ${project?.defaultBranch || 'main'}`;
 
   renderIntegrationBranchFilter(project);
-  await loadIntegrationScreen(projectId);
+  await loadIntegrationScreen(projectId, { preferredRunId });
 }
 
-async function loadIntegrationScreen(projectId) {
+async function loadIntegrationScreen(projectId, options = {}) {
+  const { preferredRunId = selectedIntegrationRunId } = options;
+
   if (!projectId) {
     integrationRunChain.innerHTML = '<p class="muted">Select a project to view its run chain.</p>';
     integrationRunsBody.innerHTML = '<tr><td colspan="7" class="muted">Select a project first.</td></tr>';
@@ -204,7 +440,7 @@ async function loadIntegrationScreen(projectId) {
     return;
   }
 
-  await Promise.all([loadIntegrationLatestComparison(projectId), loadIntegrationRuns(projectId)]);
+  await Promise.all([loadIntegrationLatestComparison(projectId), loadIntegrationRuns(projectId, preferredRunId)]);
 }
 
 async function loadIntegrationLatestComparison(projectId) {
@@ -229,11 +465,12 @@ async function loadIntegrationLatestComparison(projectId) {
   }
 }
 
-async function loadIntegrationRuns(projectId) {
+async function loadIntegrationRuns(projectId, preferredRunId = null) {
   integrationRunChain.innerHTML = '';
   integrationRunsBody.innerHTML = '';
-  selectedIntegrationRunId = null;
   currentIntegrationRunItems = [];
+
+  const retainedRunId = preferredRunId || selectedIntegrationRunId;
 
   try {
     const url = new URL(`/api/projects/${projectId}/integration-test-runs`, window.location.origin);
@@ -252,6 +489,20 @@ async function loadIntegrationRuns(projectId) {
     const items = data.items || [];
 
     currentIntegrationRunItems = items;
+
+    if (items.length === 0) {
+      selectedIntegrationRunId = null;
+      integrationRunChain.innerHTML = '<p class="muted">No integration runs found for current filters.</p>';
+      integrationRunsBody.innerHTML = '<tr><td colspan="7" class="muted">No integration runs found.</td></tr>';
+      integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">No run selected.</td></tr>';
+      return;
+    }
+
+    const nextSelectedRunId = retainedRunId && items.some((run) => run.id === retainedRunId)
+      ? retainedRunId
+      : items[0].id;
+
+    selectedIntegrationRunId = nextSelectedRunId;
     renderIntegrationRunChain(items);
 
     for (const run of items) {
@@ -275,17 +526,10 @@ async function loadIntegrationRuns(projectId) {
       integrationRunsBody.appendChild(tr);
     }
 
-    if (items.length === 0) {
-      integrationRunsBody.innerHTML = '<tr><td colspan="7" class="muted">No integration runs found.</td></tr>';
-      integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">No run selected.</td></tr>';
-      return;
-    }
-
-    selectedIntegrationRunId = items[0].id;
     highlightSelectedRunRow();
-    renderIntegrationRunChain(items);
     await loadIntegrationRunDetails(projectId, selectedIntegrationRunId);
   } catch (err) {
+    selectedIntegrationRunId = null;
     integrationRunChain.innerHTML = `<p class="muted">${err.message}</p>`;
     integrationRunsBody.innerHTML = `<tr><td colspan="7" class="muted">${err.message}</td></tr>`;
     integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">Failed to load selected run details.</td></tr>';
@@ -475,7 +719,7 @@ function renderHeatmap(groups) {
           if (selectedProjectId !== project.projectId) {
             // Switching project: select it (loads runs for that project)
             projectSelector.value = project.projectId;
-            await selectProject(project.projectId);
+            await selectProject(project.projectId, { preferredRunId: run.id });
             renderProjectSelector();
           } else {
             // Same project: synchronize run selection

@@ -8,6 +8,9 @@ const deltaCoverage = document.getElementById('deltaCoverage');
 const thresholdPercent = document.getElementById('thresholdPercent');
 const thresholdStatus = document.getElementById('thresholdStatus');
 const refreshProjects = document.getElementById('refreshProjects');
+const autoRefreshInterval = document.getElementById('autoRefreshInterval');
+const autoRefreshStatus = document.getElementById('autoRefreshStatus');
+const autoRefreshProgressBar = document.getElementById('autoRefreshProgressBar');
 const openHeatmap = document.getElementById('openHeatmap');
 const closeHeatmap = document.getElementById('closeHeatmap');
 const heatmapOverlay = document.getElementById('heatmapOverlay');
@@ -44,8 +47,27 @@ let heatmapLayoutFrame = 0;
 let contributorsLayoutFrame = 0;
 let trendRequestSequence = 0;
 const sidebarCollapsedKey = 'opencoverage.sidebarCollapsed';
+const homeAutoRefreshStorageKey = 'opencoverage.autoRefresh.home';
+const homeAutoRefreshIntervals = Object.freeze({
+  off: 0,
+  '15s': 15000,
+  '30s': 30000,
+  '60s': 60000,
+  '5m': 300000,
+});
+let homeRefreshTimeoutId = 0;
+let homeRefreshInFlight = false;
+let homeRefreshCountdownIntervalId = 0;
+let homeNextRefreshAt = 0;
+let homeRefreshDurationMs = 0;
 
-refreshProjects.addEventListener('click', () => loadProjects());
+refreshProjects.addEventListener('click', async () => {
+  await performHomeRefresh('manual');
+});
+autoRefreshInterval.addEventListener('change', () => {
+  persistHomeAutoRefreshInterval(autoRefreshInterval.value);
+  scheduleHomeAutoRefresh();
+});
 toggleSidebar.addEventListener('click', () => {
   const shouldCollapse = !appShell.classList.contains('sidebar-collapsed');
   setSidebarCollapsed(shouldCollapse);
@@ -80,13 +102,176 @@ window.addEventListener('resize', () => {
   scheduleHeatmapLayout();
   scheduleContributorsLayout();
 });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearHomeAutoRefresh();
+    updateHomeAutoRefreshStatus();
+    return;
+  }
+  scheduleHomeAutoRefresh();
+});
 
 initializeSidebarState();
+initializeHomeAutoRefreshControl();
 loadAppMeta();
 
 function getQueryParam(name) {
   const params = new URLSearchParams(window.location.search);
   return params.get(name);
+}
+
+function initializeHomeAutoRefreshControl() {
+  const persisted = window.localStorage.getItem(homeAutoRefreshStorageKey);
+  const nextValue = Object.prototype.hasOwnProperty.call(homeAutoRefreshIntervals, persisted) ? persisted : 'off';
+  autoRefreshInterval.value = nextValue;
+  updateHomeAutoRefreshStatus();
+}
+
+function getHomeAutoRefreshIntervalValue() {
+  const selectedValue = autoRefreshInterval.value;
+  return Object.prototype.hasOwnProperty.call(homeAutoRefreshIntervals, selectedValue) ? selectedValue : 'off';
+}
+
+function getHomeAutoRefreshIntervalMs() {
+  return homeAutoRefreshIntervals[getHomeAutoRefreshIntervalValue()] || 0;
+}
+
+function persistHomeAutoRefreshInterval(value) {
+  const nextValue = Object.prototype.hasOwnProperty.call(homeAutoRefreshIntervals, value) ? value : 'off';
+  window.localStorage.setItem(homeAutoRefreshStorageKey, nextValue);
+}
+
+function clearHomeAutoRefresh() {
+  if (!homeRefreshTimeoutId) return;
+  window.clearTimeout(homeRefreshTimeoutId);
+  homeRefreshTimeoutId = 0;
+}
+
+function setHomeAutoRefreshProgress(progressRatio) {
+  if (!autoRefreshProgressBar) return;
+  const safeRatio = Math.max(0, Math.min(1, progressRatio));
+  autoRefreshProgressBar.style.transform = `scaleX(${safeRatio})`;
+}
+
+function clearHomeCountdownTicker() {
+  if (!homeRefreshCountdownIntervalId) return;
+  window.clearInterval(homeRefreshCountdownIntervalId);
+  homeRefreshCountdownIntervalId = 0;
+}
+
+function formatRemainingTime(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+function updateHomeAutoRefreshStatus() {
+  if (!autoRefreshStatus) return;
+
+  const intervalLabel = getHomeAutoRefreshIntervalValue();
+  if (intervalLabel === 'off') {
+    autoRefreshStatus.textContent = 'Auto refresh is off.';
+    setHomeAutoRefreshProgress(0);
+    return;
+  }
+
+  if (document.hidden) {
+    autoRefreshStatus.textContent = `Paused (${intervalLabel}) while tab is hidden.`;
+    setHomeAutoRefreshProgress(0);
+    return;
+  }
+
+  if (homeRefreshInFlight) {
+    autoRefreshStatus.textContent = `Refreshing now (${intervalLabel}).`;
+    setHomeAutoRefreshProgress(0);
+    return;
+  }
+
+  if (!homeNextRefreshAt) {
+    autoRefreshStatus.textContent = `Scheduled every ${intervalLabel}.`;
+    setHomeAutoRefreshProgress(0);
+    return;
+  }
+
+  const remainingMs = homeNextRefreshAt - Date.now();
+  autoRefreshStatus.textContent = `Next refresh in ${formatRemainingTime(remainingMs)} (${intervalLabel}).`;
+  const denominator = homeRefreshDurationMs || getHomeAutoRefreshIntervalMs() || 1;
+  setHomeAutoRefreshProgress(remainingMs / denominator);
+}
+
+function scheduleHomeAutoRefresh() {
+  clearHomeAutoRefresh();
+  clearHomeCountdownTicker();
+  homeNextRefreshAt = 0;
+  homeRefreshDurationMs = 0;
+
+  const intervalMs = getHomeAutoRefreshIntervalMs();
+  if (!intervalMs || document.hidden) {
+    updateHomeAutoRefreshStatus();
+    return;
+  }
+
+  homeRefreshDurationMs = intervalMs;
+  homeNextRefreshAt = Date.now() + intervalMs;
+  setHomeAutoRefreshProgress(1);
+  updateHomeAutoRefreshStatus();
+  homeRefreshCountdownIntervalId = window.setInterval(() => {
+    updateHomeAutoRefreshStatus();
+  }, 200);
+
+  homeRefreshTimeoutId = window.setTimeout(async () => {
+    if (document.hidden || homeRefreshInFlight) {
+      scheduleHomeAutoRefresh();
+      return;
+    }
+
+    await performHomeRefresh('auto');
+  }, intervalMs);
+}
+
+function setHomeRefreshButtonBusy(busy) {
+  refreshProjects.disabled = busy;
+  refreshProjects.textContent = busy ? 'Refreshing...' : 'Refresh';
+}
+
+async function performHomeRefresh(source = 'manual') {
+  if (homeRefreshInFlight) {
+    return false;
+  }
+
+  homeRefreshInFlight = true;
+  clearHomeAutoRefresh();
+  clearHomeCountdownTicker();
+  homeNextRefreshAt = 0;
+  homeRefreshDurationMs = 0;
+  updateHomeAutoRefreshStatus();
+
+  const contributorsWasOpen = contributorsOverlay.classList.contains('open');
+
+  if (source === 'manual') {
+    setHomeRefreshButtonBusy(true);
+  }
+
+  try {
+    await loadProjects();
+
+    if (contributorsWasOpen) {
+      await loadAllContributors();
+    }
+
+    return true;
+  } finally {
+    if (source === 'manual') {
+      setHomeRefreshButtonBusy(false);
+    }
+
+    homeRefreshInFlight = false;
+    scheduleHomeAutoRefresh();
+  }
 }
 
 function toggleHeatmapOverlay(open) {
@@ -176,15 +361,38 @@ async function loadProjects() {
     projects = items;
     allProjects = items;
     filteredProjects = items;
+
+    const nextSelectedProjectId = items.some((project) => project.id === selectedProjectId)
+      ? selectedProjectId
+      : (items[0]?.id || null);
+
     renderProjectSelector();
 
-    if (!selectedProjectId && projects.length > 0) {
-      await selectProject(projects[0].id);
-     renderProjectSelector(); // Update dropdown to show selected project
-     } else if (selectedProjectId) {
-       await selectProject(selectedProjectId);
-       renderProjectSelector(); // Update dropdown to show selected project
-     }
+    if (!nextSelectedProjectId) {
+      selectedProjectId = null;
+      selectedBranch = '';
+      selectedProjectName.textContent = 'No projects found';
+      selectedProjectMeta.textContent = 'Ingest coverage data to populate the dashboard.';
+      branchSelector.innerHTML = '<option value="">No branches available</option>';
+      runsBody.innerHTML = '<tr><td colspan="5" class="muted">No runs found.</td></tr>';
+      packagesBody.innerHTML = '<tr><td colspan="5" class="muted">No comparison data available.</td></tr>';
+      currentCoverage.textContent = '-';
+      previousCoverage.textContent = '-';
+      deltaCoverage.textContent = '-';
+      thresholdPercent.textContent = '-';
+      thresholdStatus.textContent = '-';
+      compareSummary.textContent = 'No project selected.';
+      compareCurrent.textContent = '-';
+      compareBaseline.textContent = '-';
+      compareRunType.textContent = '-';
+      compareCard.classList.remove('pr-mode');
+    } else if (nextSelectedProjectId === selectedProjectId) {
+      await selectProject(nextSelectedProjectId, { resetBranch: false });
+      renderProjectSelector();
+    } else {
+      await selectProject(nextSelectedProjectId);
+      renderProjectSelector();
+    }
 
     await loadHeatmap();
   } catch (err) {
@@ -226,9 +434,13 @@ function filterAndRenderProjects(searchTerm) {
   renderProjectSelector();
 }
 
-async function selectProject(projectId) {
+async function selectProject(projectId, options = {}) {
+  const { resetBranch = true } = options;
+
   selectedProjectId = projectId;
-  selectedBranch = '';
+  if (resetBranch) {
+    selectedBranch = '';
+  }
   projectSearchInput.value = '';
   renderHeatmap();
 
@@ -785,6 +997,10 @@ function renderBranchSelector() {
     option.textContent = branch;
     branchSelector.appendChild(option);
   }
+
+  if (selectedBranch && !availableBranches.includes(selectedBranch)) {
+    selectedBranch = '';
+  }
   
   branchSelector.value = selectedBranch;
 }
@@ -1136,9 +1352,8 @@ function directionClass(direction) {
 }
 
 (async () => {
-  await loadProjects();
+  await performHomeRefresh('initial');
   if (getQueryParam('heatmap') === 'open') {
     toggleHeatmapOverlay(true);
-    await loadHeatmap();
   }
 })();

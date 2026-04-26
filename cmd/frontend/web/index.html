@@ -19,6 +19,20 @@
           <p class="eyebrow">Open Coverage</p>
           <h1>Projects</h1>
           <button id="refreshProjects" class="btn">Refresh</button>
+          <label class="sidebar-control" for="autoRefreshInterval">
+            <span class="eyebrow">Auto Refresh</span>
+            <select id="autoRefreshInterval" class="branch-select sidebar-select">
+              <option value="off">Off</option>
+              <option value="15s">Every 15s</option>
+              <option value="30s">Every 30s</option>
+              <option value="60s">Every 60s</option>
+              <option value="5m">Every 5m</option>
+            </select>
+            <p id="autoRefreshStatus" class="muted sidebar-help">Auto refresh is off.</p>
+            <div class="auto-refresh-progress" aria-hidden="true">
+              <span id="autoRefreshProgressBar" class="auto-refresh-progress-bar"></span>
+            </div>
+          </label>
           <button id="openHeatmap" class="btn">Open Heatmap</button>
           <button id="openContributors" class="btn">Top Contributors</button>
           <a id="openIntegrationScreen" class="btn btn-link" href="/integration">Integration Tests</a>
