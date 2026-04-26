@@ -282,11 +282,18 @@ h3 {
 
 .content {
   position: relative;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  display: grid;
+  gap: 16px;
   min-height: 0;
   overflow: hidden;
-  /* gap: 16px; */
-  /* display: grid; */
+}
+
+.content-home {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.content-integration {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .integration-screen {
