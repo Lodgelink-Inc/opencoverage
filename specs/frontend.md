@@ -83,6 +83,90 @@ Integration route behavior:
 10. Clicking a heatmap tile for the active project synchronizes selected state with run chain, run table, and failed-spec details.
 11. Heatmap has its own branch and status filters independent from the per-project run table filters.
 
+## Refresh Mechanism
+
+The frontend must support explicit manual refresh on both primary screens.
+
+### Goals
+
+1. Refresh must give users a predictable way to pull newly ingested data without a full browser reload.
+2. Refresh must preserve as much UI context as possible: current route, selected project, active overlays, query-parameter-driven overlay state, and user-entered filters.
+3. Refresh must keep failures localized. A failed sub-request must not blank unrelated panels when existing data can still be shown.
+4. Refresh must support configurable automatic polling so users can keep either screen current without manually reloading.
+
+### Shared Rules
+
+1. Each screen must expose a primary `Refresh` control in the sidebar or screen header.
+2. A refresh action must be idempotent and safe to trigger repeatedly.
+3. While a refresh is in flight, the triggering control should enter a loading/disabled state to prevent duplicate concurrent refreshes from the same control.
+4. Refresh must not perform a full document reload.
+5. Refresh completion should update only the affected data views and should not collapse open overlays or reset the sidebar state.
+6. If the currently selected project still exists after refresh, it must remain selected.
+7. If the currently selected project no longer exists, the UI should fall back to the first available project; if no projects remain, the screen should enter its empty state.
+8. Search text used only to filter the visible project selector may be cleared on refresh, but persisted screen-level filters must be preserved unless the server data makes them invalid.
+9. Query-parameter-opened overlays, such as `?heatmap=open`, must remain open after refresh unless the user explicitly closes them.
+10. Errors must be surfaced inline near the affected panel or overlay, using the last successfully rendered data when practical.
+
+### Auto Refresh Configuration
+
+1. Each screen must expose an auto-refresh control alongside the manual refresh action.
+2. The control must allow choosing one of these intervals: `off`, `15s`, `30s`, `60s`, `5m`.
+3. `off` disables automatic polling; any other value enables periodic refresh using the selected interval.
+4. The selected interval must be configurable independently per route (`/` and `/integration`).
+5. The selected interval should persist across reloads for the same route, for example via browser local storage.
+6. A manual refresh and an automatic refresh must execute the same underlying refresh workflow for that screen.
+7. If a refresh is already running when the next interval fires, the overlapping automatic refresh must be skipped rather than queued.
+8. A successful or failed manual refresh should reset the auto-refresh timer so the next automatic tick is scheduled from the end of the most recent refresh attempt.
+9. Automatic refresh should pause while the document is hidden and resume when the tab becomes visible again.
+10. Automatic refresh must preserve the same state guarantees as manual refresh: selected project, selected run, overlay open state, filters, and query-parameter-driven overlay state.
+11. Automatic refresh must not steal focus, scroll the page unexpectedly, or close overlays.
+12. Each screen must display a visible auto-refresh status line near the interval selector.
+13. The status line must show the next automatic refresh timing as a live countdown while auto refresh is enabled (for example `Next refresh in 12s`).
+14. The status line must switch to explicit state labels when applicable:
+	- `Auto refresh is off.` when interval is `off`
+	- `Refreshing now (...)` while a refresh is in flight
+	- `Paused (...) while tab is hidden.` when polling is paused by document visibility
+15. Countdown/status text must update automatically without requiring manual user interaction.
+
+### Home Screen Refresh Scope
+
+1. Trigger: the sidebar `Refresh` button on `/`.
+2. A home-screen refresh must refetch the project catalog first.
+3. After the project catalog is refreshed, the home screen must refresh the active project's dependent views:
+	- branch list
+	- recent runs table
+	- latest comparison summary
+	- multi-branch trend chart
+4. The all-project coverage heatmap dataset must also be refreshed as part of the same action.
+5. If the heatmap overlay is currently open, it must remain open and repaint with the refreshed dataset.
+6. If the Top Contributors overlay is currently open, it should remain open and refresh its contributor dataset as part of the same action.
+7. A project-selector change is not equivalent to a global refresh; it refreshes only the newly selected project's dependent views plus any views that are defined as global for the screen.
+8. When home-screen auto refresh is enabled, each automatic interval must run this same screen-level refresh scope.
+
+### Integration Screen Refresh Scope
+
+1. Trigger: the sidebar `Refresh` button on `/integration`.
+2. An integration-screen refresh must refetch the project catalog first.
+3. After the project catalog is refreshed, the screen must refresh the active project's dependent views:
+	- latest integration comparison summary
+	- integration run table
+	- run chain visualization
+	- failed-spec details for the selected run
+4. If the selected run no longer exists after refresh, the screen should select the newest available run from the refreshed run list.
+5. The integration heatmap overlay dataset is global to the screen and should refresh as part of the same action when the overlay is open.
+6. The integration heatmap overlay must also support its own local `Reload` control that refreshes only the heatmap query and preserves overlay filters.
+7. The per-project integration table `Reload` control must refresh only the active project's comparison, run list, run chain, and failed-spec details; it must not implicitly reset heatmap filters.
+8. When integration-screen auto refresh is enabled, each automatic interval must run this same screen-level refresh scope.
+
+### Loading and Error Behavior
+
+1. Refreshing a panel should preserve the previous rendered state until replacement data arrives, unless an empty/loading placeholder is materially clearer.
+2. Overlay-specific reload actions must show loading state inside the overlay body rather than in unrelated screen panels.
+3. A project-catalog refresh failure must not clear already rendered project data unless the UI can no longer determine a valid selection.
+4. A global refresh may complete partially. The spec allows mixed success states as long as each affected region communicates its own failure clearly.
+5. Automatic refresh failures should be surfaced non-destructively and must not disable future scheduled refresh attempts unless the user explicitly turns auto refresh off.
+6. Auto-refresh status text must remain truthful during errors (for example, keep countdown behavior and interval context after a failed automatic tick).
+
 ## No User Authentication
 
 The frontend does not require user login/auth.

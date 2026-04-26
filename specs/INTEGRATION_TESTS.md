@@ -353,6 +353,32 @@ Behavior:
 9. Clicking a heatmap tile for the currently selected project must synchronize selected run state with the run chain, run table, and failed-spec details. Clicking a tile for a different project may switch the active project selection.
 10. Heatmap must respond to its own branch/status filters and reload independently from the per-project run table.
 
+### 8.3.1 Integration Refresh Semantics
+1. The integration route must expose a primary screen-level `Refresh` action.
+2. A screen-level refresh must refetch the project catalog and then refresh the active project's latest comparison, run list, run chain, and failed-spec details.
+3. If the active project still exists after refresh, it must remain selected.
+4. If the selected run still exists after refresh, it should remain selected; otherwise the newest run in the refreshed list becomes selected.
+5. The per-project `Reload` control must refresh only the active project's comparison, run list, run chain, and failed-spec details.
+6. The integration heatmap overlay `Reload` control must refresh only the all-project heatmap query.
+7. Heatmap overlay filters (`branch`, `status`) must be preserved across both the overlay-local reload and the screen-level refresh.
+8. If the heatmap overlay is open during a screen-level refresh, it should remain open and repaint when the refreshed heatmap data arrives.
+9. Refresh operations must not reset route-level query parameter behavior such as `?heatmap=open`.
+10. Error handling must remain local to the failing region whenever possible; for example, a heatmap reload failure must not clear the per-project run table.
+11. The integration route must expose an auto-refresh configuration control with these intervals: `off`, `15s`, `30s`, `60s`, `5m`.
+12. When auto refresh is enabled, each interval tick must execute the same screen-level refresh workflow as the primary `Refresh` action.
+13. The selected auto-refresh interval should persist for the integration route independently of the home route.
+14. Auto refresh must preserve active project selection, selected run selection when still present, heatmap open state, heatmap filters, and route query parameter behavior.
+15. If an automatic refresh tick occurs while another integration refresh is already in progress, the overlapping tick must be skipped.
+16. Auto refresh should pause when the browser tab is hidden and resume when the tab becomes visible again.
+17. Automatic refresh failures must not disable future scheduled refresh attempts unless the user turns auto refresh off.
+18. The integration route must display a visible auto-refresh status line near the interval control.
+19. When auto refresh is enabled, the status line must display a live countdown to the next automatic refresh.
+20. The status line must reflect runtime states explicitly:
+  - off
+  - refreshing now
+  - paused while tab is hidden
+21. Status/countdown updates must occur continuously without requiring additional user input.
+
 ### 8.4 Frontend Proxy Routes
 The following proxy routes are required:
 1. `GET /api/projects/{projectId}/integration-test-runs`
