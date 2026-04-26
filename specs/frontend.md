@@ -26,6 +26,18 @@ Current behavior:
 
 The branch selector below the overview card does **not** filter the trend graph. It controls the latest comparison panel and package comparison table only.
 
+## Visual Refresh
+
+The frontend now uses a light, modern visual direction inspired by QuintoAndar.
+
+Implemented style goals:
+
+1. Move to a light surface system with white cards and soft neutral backgrounds.
+2. Keep strong readability using dark text and restrained accent colors.
+3. Modernize controls (buttons, inputs, selects) with lighter borders, clear focus states, and cleaner spacing.
+4. Preserve all current information architecture and interactions while only changing visual language.
+5. Keep responsive behavior and route-level separation (`/` and `/integration`) unchanged.
+
 ## Integration Screen Navigation
 
 Integration test views are available on a dedicated frontend route:
