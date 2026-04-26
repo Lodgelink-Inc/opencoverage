@@ -33,6 +33,7 @@ let filteredProjects = [];
 let selectedProjectId = null;
 let selectedIntegrationRunId = null;
 let currentIntegrationRunItems = [];
+const integrationRunChainMaxItems = 5;
 const allGroupsFilterValue = '__all__';
 const ungroupedFilterValue = '__ungrouped__';
 const sidebarCollapsedKey = 'opencoverage.sidebarCollapsed.integration';
@@ -628,7 +629,7 @@ async function loadIntegrationRuns(projectId, preferredRunId = null) {
       : items[0].id;
 
     selectedIntegrationRunId = nextSelectedRunId;
-    renderIntegrationRunChain(items);
+    renderIntegrationRunChain(items.slice(0, integrationRunChainMaxItems));
 
     for (const run of items) {
       const tr = document.createElement('tr');
@@ -645,7 +646,7 @@ async function loadIntegrationRuns(projectId, preferredRunId = null) {
       tr.addEventListener('click', async () => {
         selectedIntegrationRunId = run.id;
         highlightSelectedRunRow();
-        renderIntegrationRunChain(items);
+        renderIntegrationRunChain(items.slice(0, integrationRunChainMaxItems));
         await loadIntegrationRunDetails(projectId, run.id);
       });
       integrationRunsBody.appendChild(tr);

@@ -1658,7 +1658,8 @@ th {
 }
 
 .integration-chain-connector {
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.33), rgba(192, 208, 228, 0.95));
+  background: transparent;
+  border: 0;
 }
 
 .up,
