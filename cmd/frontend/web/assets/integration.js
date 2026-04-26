@@ -670,7 +670,8 @@ function renderIntegrationRunChain(items) {
   const track = document.createElement('div');
   track.className = 'integration-run-chain-track';
 
-  items.forEach((run, index) => {
+  const displayItems = [...items].reverse();
+  displayItems.forEach((run, index) => {
     const item = document.createElement('div');
     item.className = 'integration-chain-item';
 
@@ -697,10 +698,10 @@ function renderIntegrationRunChain(items) {
     item.appendChild(label);
     track.appendChild(item);
 
-    if (index < items.length - 1) {
+    if (index < displayItems.length - 1) {
       const connector = document.createElement('span');
       connector.className = 'integration-chain-connector';
-      connector.textContent = '←';
+      connector.textContent = '→';
       connector.title = 'Oldest to newest';
       connector.setAttribute('aria-hidden', 'true');
       track.appendChild(connector);
@@ -843,7 +844,8 @@ function renderHeatmap(groups) {
       tilesEl.className = 'integration-heatmap-tiles';
 
       const runs = project.runs || [];
-      runs.forEach((run, index) => {
+      const displayRuns = [...runs].reverse();
+      displayRuns.forEach((run, index) => {
         const tile = document.createElement('button');
         tile.type = 'button';
         tile.className = `integration-heatmap-tile ${run.status === 'passed' ? 'passed' : 'failed'}`;
@@ -880,10 +882,10 @@ function renderHeatmap(groups) {
 
         tilesEl.appendChild(tile);
 
-        if (index < runs.length - 1) {
+        if (index < displayRuns.length - 1) {
           const arrow = document.createElement('span');
           arrow.className = 'integration-heatmap-arrow';
-          arrow.textContent = '←';
+          arrow.textContent = '→';
           arrow.title = 'Oldest to newest';
           arrow.setAttribute('aria-hidden', 'true');
           tilesEl.appendChild(arrow);

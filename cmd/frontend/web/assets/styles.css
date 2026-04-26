@@ -391,6 +391,8 @@ h3 {
   place-items: center;
   width: 20px;
   height: 18px;
+  background: transparent;
+  border: 0;
   color: var(--text-soft);
   font-size: 13px;
   line-height: 1;
@@ -486,7 +488,7 @@ h3 {
 
 .integration-heatmap-project-row {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-columns: minmax(90px, max-content) minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   min-height: 32px;
@@ -510,6 +512,7 @@ h3 {
   font-size: 12px;
   font-weight: 700;
   color: var(--cyan);
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
