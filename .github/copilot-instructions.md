@@ -141,3 +141,7 @@ A change is complete only when:
 3. Tests cover happy paths and key edge/error cases.
 4. Logging/metrics impact is considered.
 5. API and schema changes are reflected in docs/migrations as needed.
+
+## Binaries
+
+1. do not build binaries in the repository, use `go run` for local development and testing.
