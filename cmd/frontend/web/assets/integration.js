@@ -7,7 +7,6 @@ const integrationScreenProjectMeta = document.getElementById('integrationScreenP
 const integrationStatus = document.getElementById('integrationStatus');
 const integrationPassRate = document.getElementById('integrationPassRate');
 const integrationFailedSpecsCount = document.getElementById('integrationFailedSpecsCount');
-const integrationDelta = document.getElementById('integrationDelta');
 const integrationDuration = document.getElementById('integrationDuration');
 const integrationBranchFilter = document.getElementById('integrationBranchFilter');
 const integrationStatusFilter = document.getElementById('integrationStatusFilter');
@@ -378,7 +377,6 @@ async function loadProjects() {
       integrationStatus.className = 'value';
       integrationPassRate.textContent = '-';
       integrationFailedSpecsCount.textContent = '-';
-      integrationDelta.textContent = '-';
       integrationDuration.textContent = '-';
       renderProjectSelector();
     } else if (nextSelectedProjectId === selectedProjectId) {
@@ -490,7 +488,6 @@ async function ensureSelectedProjectIsVisible() {
     integrationStatus.className = 'value';
     integrationPassRate.textContent = '-';
     integrationFailedSpecsCount.textContent = '-';
-    integrationDelta.textContent = '-';
     integrationDuration.textContent = '-';
     renderProjectSelector();
     return;
@@ -584,7 +581,6 @@ async function loadIntegrationLatestComparison(projectId) {
     if (projectId !== selectedProjectId) return;
     if ((integrationBranchFilter.value || '') !== requestedBranch) return;
 
-    integrationDelta.textContent = data.comparison?.deltaPercent == null ? '-' : signedPct(data.comparison.deltaPercent);
     integrationDuration.textContent = data.run?.durationMs == null ? '-' : `${Math.round(data.run.durationMs / 1000)}s`;
   } catch (err) {
     if (projectId !== selectedProjectId) return;
@@ -592,7 +588,6 @@ async function loadIntegrationLatestComparison(projectId) {
     integrationStatus.className = 'value failed';
     integrationPassRate.textContent = '-';
     integrationFailedSpecsCount.textContent = '-';
-    integrationDelta.textContent = '-';
     integrationDuration.textContent = '-';
   }
 }
