@@ -461,24 +461,32 @@ h3 {
 
 .integration-heatmap-group {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 4px;
+  padding: 8px 12px 12px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: linear-gradient(160deg, rgba(30, 50, 80, 0.3), rgba(20, 35, 60, 0.2));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(20, 35, 60, 0.08);
   min-height: 0;
   overflow: auto;
+  grid-template-rows: auto 1fr;
+  align-content: start;
 }
 
 .integration-heatmap-group-name {
   margin: 0;
+  padding: 6px 8px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-soft);
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* background: rgba(20, 35, 60, 0.15); */
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  line-height: 1;
+  display: inline-block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .heatmap-time-direction {
@@ -488,7 +496,11 @@ h3 {
 
 .integration-heatmap-project-card {
   display: grid;
-  gap: 10px;
+  align-self: start;
+  align-content: start;
+  grid-template-rows: auto auto;
+  height: fit-content;
+  gap: 5px;
   padding: 12px;
   border-radius: 10px;
   border: 1px solid rgba(39, 52, 81, 0.55);
@@ -505,18 +517,36 @@ h3 {
 }
 
 .integration-heatmap-project-header {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  line-height: 1;
 }
 
 .integration-heatmap-project-meta {
+  display: block;
+  margin: 0;
+  padding: 0;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-soft);
+  line-height: 1;
 }
 
 .integration-heatmap-environment-list {
@@ -526,8 +556,8 @@ h3 {
 
 .integration-heatmap-environment-row {
   display: grid;
-  grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: fit-content minmax(0, 1fr);
+  gap: 12px;
   align-items: center;
   min-height: 32px;
   padding: 8px 10px;
@@ -547,6 +577,9 @@ h3 {
 }
 
 .integration-heatmap-project-name {
+  display: block;
+  margin: 0;
+  padding: 0;
   font-size: 12px;
   font-weight: 700;
   color: var(--cyan);
@@ -554,6 +587,18 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1;
+}
+
+@media (min-width: 1200px) {
+  .integration-heatmap-project-card {
+    gap: 3px;
+  }
+
+  .integration-heatmap-project-header {
+    margin: 0;
+    padding: 6px 8px;
+  }
 }
 
 .integration-heatmap-environment-info {
@@ -1886,4 +1931,17 @@ th {
 
 .scale-step {
   border-right: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+/* Responsive adjustments for integration heatmap on larger screens */
+@media (min-width: 1600px) {
+  .integration-heatmap-environment-row {
+    gap: 16px;
+  }
+}
+
+@media (min-width: 2000px) {
+  .integration-heatmap-environment-row {
+    gap: 20px;
+  }
 }
