@@ -21,6 +21,7 @@ type IngestIntegrationRunInput struct {
 	Author        string                 `json:"author"`
 	TriggerType   string                 `json:"triggerType"`
 	RunTimestamp  string                 `json:"runTimestamp"`
+	Environment   *string                `json:"environment,omitempty"`
 	GinkgoReport  IngestGinkgoReportBody `json:"ginkgoReport"`
 }
 
@@ -58,6 +59,7 @@ type IntegrationRunResponse struct {
 	Author          string  `json:"author,omitempty"`
 	TriggerType     string  `json:"triggerType"`
 	RunTimestamp    string  `json:"runTimestamp"`
+	Environment     *string `json:"environment,omitempty"`
 	TotalSpecs      int     `json:"totalSpecs"`
 	PassedSpecs     int     `json:"passedSpecs"`
 	FailedSpecs     int     `json:"failedSpecs"`
@@ -326,6 +328,7 @@ func (uc *IngestIntegrationRunUseCase) buildIntegrationEntities(projectID string
 		TimedOut:         timedOut,
 		DurationMS:       totalDurationMS,
 		Status:           domain.EvaluateIntegrationRunStatus(failed, interrupted, timedOut),
+		Environment:      in.Environment,
 		CreatedAt:        uc.clock.Now().UTC(),
 	}
 
@@ -428,6 +431,7 @@ func integrationRunResponse(run domain.IntegrationTestRun) IntegrationRunRespons
 		Author:          run.Author,
 		TriggerType:     run.TriggerType,
 		RunTimestamp:    run.RunTimestamp.UTC().Format(time.RFC3339),
+		Environment:     run.Environment,
 		TotalSpecs:      run.TotalSpecs,
 		PassedSpecs:     run.PassedSpecs,
 		FailedSpecs:     run.FailedSpecs,

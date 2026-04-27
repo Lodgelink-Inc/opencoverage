@@ -28,13 +28,13 @@ func (r *IntegrationTestRunRepository) Create(ctx context.Context, run domain.In
 			id, project_id, branch, commit_sha, author, trigger_type, run_timestamp,
 			ginkgo_version, suite_description, suite_path, total_specs, passed_specs,
 			failed_specs, skipped_specs, flaked_specs, pending_specs, interrupted,
-			timed_out, duration_ms, status, created_at
+			timed_out, duration_ms, status, environment, created_at
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
 			$8, $9, $10, $11, $12,
 			$13, $14, $15, $16, $17,
-			$18, $19, $20, $21
+			$18, $19, $20, $21, $22
 		)
 	`,
 		run.ID,
@@ -57,6 +57,7 @@ func (r *IntegrationTestRunRepository) Create(ctx context.Context, run domain.In
 		run.TimedOut,
 		run.DurationMS,
 		run.Status,
+		run.Environment,
 		run.CreatedAt,
 	)
 	if err != nil {
@@ -72,7 +73,7 @@ func (r *IntegrationTestRunRepository) GetLatestByProjectAndBranch(ctx context.C
 		SELECT id, project_id, branch, commit_sha, COALESCE(author, ''), trigger_type, run_timestamp,
 			COALESCE(ginkgo_version, ''), suite_description, suite_path, total_specs, passed_specs,
 			failed_specs, skipped_specs, flaked_specs, pending_specs, interrupted, timed_out,
-			duration_ms, status, created_at
+			duration_ms, status, environment, created_at
 		FROM integration_test_runs
 		WHERE project_id = $1 AND branch = $2
 		ORDER BY run_timestamp DESC, created_at DESC
@@ -98,6 +99,7 @@ func (r *IntegrationTestRunRepository) GetLatestByProjectAndBranch(ctx context.C
 		&run.TimedOut,
 		&run.DurationMS,
 		&run.Status,
+		&run.Environment,
 		&run.CreatedAt,
 	)
 	if err != nil {
@@ -116,7 +118,7 @@ func (r *IntegrationTestRunRepository) GetLatestByProject(ctx context.Context, p
 		SELECT id, project_id, branch, commit_sha, COALESCE(author, ''), trigger_type, run_timestamp,
 			COALESCE(ginkgo_version, ''), suite_description, suite_path, total_specs, passed_specs,
 			failed_specs, skipped_specs, flaked_specs, pending_specs, interrupted, timed_out,
-			duration_ms, status, created_at
+			duration_ms, status, environment, created_at
 		FROM integration_test_runs
 		WHERE project_id = $1
 		ORDER BY run_timestamp DESC, created_at DESC
@@ -142,6 +144,7 @@ func (r *IntegrationTestRunRepository) GetLatestByProject(ctx context.Context, p
 		&run.TimedOut,
 		&run.DurationMS,
 		&run.Status,
+		&run.Environment,
 		&run.CreatedAt,
 	)
 	if err != nil {
@@ -160,7 +163,7 @@ func (r *IntegrationTestRunRepository) GetByID(ctx context.Context, projectID st
 		SELECT id, project_id, branch, commit_sha, COALESCE(author, ''), trigger_type, run_timestamp,
 			COALESCE(ginkgo_version, ''), suite_description, suite_path, total_specs, passed_specs,
 			failed_specs, skipped_specs, flaked_specs, pending_specs, interrupted, timed_out,
-			duration_ms, status, created_at
+			duration_ms, status, environment, created_at
 		FROM integration_test_runs
 		WHERE project_id = $1 AND id = $2
 		LIMIT 1
@@ -185,6 +188,7 @@ func (r *IntegrationTestRunRepository) GetByID(ctx context.Context, projectID st
 		&run.TimedOut,
 		&run.DurationMS,
 		&run.Status,
+		&run.Environment,
 		&run.CreatedAt,
 	)
 	if err != nil {
@@ -235,7 +239,7 @@ func (r *IntegrationTestRunRepository) ListByProject(ctx context.Context, projec
 		SELECT id, project_id, branch, commit_sha, COALESCE(author, ''), trigger_type, run_timestamp,
 			COALESCE(ginkgo_version, ''), suite_description, suite_path, total_specs, passed_specs,
 			failed_specs, skipped_specs, flaked_specs, pending_specs, interrupted, timed_out,
-			duration_ms, status, created_at
+			duration_ms, status, environment, created_at
 		FROM integration_test_runs
 		%s
 		ORDER BY run_timestamp DESC, created_at DESC
@@ -273,6 +277,7 @@ func (r *IntegrationTestRunRepository) ListByProject(ctx context.Context, projec
 			&run.TimedOut,
 			&run.DurationMS,
 			&run.Status,
+			&run.Environment,
 			&run.CreatedAt,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan integration run: %w", err)

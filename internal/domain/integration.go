@@ -40,6 +40,7 @@ type IntegrationTestRun struct {
 	TimedOut         bool
 	DurationMS       int64
 	Status           IntegrationRunStatus
+	Environment      *string
 	CreatedAt        time.Time
 }
 

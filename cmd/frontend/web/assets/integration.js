@@ -367,7 +367,7 @@ async function loadProjects() {
         integrationScreenProjectTitle.textContent = 'No projects for current filter';
         integrationScreenProjectMeta.textContent = 'Adjust group and search filters to select a project.';
         integrationRunChain.innerHTML = '<p class="muted">No projects match current filters.</p>';
-        integrationRunsBody.innerHTML = '<tr><td colspan="7" class="muted">No projects match current filters.</td></tr>';
+        integrationRunsBody.innerHTML = '<tr><td colspan="8" class="muted">No projects match current filters.</td></tr>';
       }
       integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">No run selected.</td></tr>';
       integrationStatus.textContent = '-';
@@ -480,7 +480,7 @@ async function ensureSelectedProjectIsVisible() {
     integrationScreenProjectTitle.textContent = 'No projects for current filter';
     integrationScreenProjectMeta.textContent = 'Adjust group and search filters to select a project.';
     integrationRunChain.innerHTML = '<p class="muted">No projects match current filters.</p>';
-    integrationRunsBody.innerHTML = '<tr><td colspan="7" class="muted">No projects match current filters.</td></tr>';
+    integrationRunsBody.innerHTML = '<tr><td colspan="8" class="muted">No projects match current filters.</td></tr>';
     integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">No run selected.</td></tr>';
     integrationStatus.textContent = '-';
     integrationStatus.className = 'value';
@@ -556,7 +556,7 @@ async function loadIntegrationScreen(projectId, options = {}) {
 
   if (!projectId) {
     integrationRunChain.innerHTML = '<p class="muted">Select a project to view its run chain.</p>';
-    integrationRunsBody.innerHTML = '<tr><td colspan="7" class="muted">Select a project first.</td></tr>';
+    integrationRunsBody.innerHTML = '<tr><td colspan="8" class="muted">Select a project first.</td></tr>';
     integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">No run selected.</td></tr>';
     return;
   }
@@ -641,7 +641,7 @@ async function loadIntegrationRuns(projectId, preferredRunId = null) {
       integrationStatus.className = 'value';
       integrationFailedSpecsCount.textContent = '-';
       integrationRunChain.innerHTML = '<p class="muted">No integration runs found for current filters.</p>';
-      integrationRunsBody.innerHTML = '<tr><td colspan="7" class="muted">No integration runs found.</td></tr>';
+      integrationRunsBody.innerHTML = '<tr><td colspan="8" class="muted">No integration runs found.</td></tr>';
       integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">No run selected.</td></tr>';
       return;
     }
@@ -668,6 +668,7 @@ async function loadIntegrationRuns(projectId, preferredRunId = null) {
         <td class="${run.status === 'passed' ? 'up' : 'down'}">${run.status}</td>
         <td>${pct(run.passRatePercent)}</td>
         <td>${run.failedSpecs}</td>
+        <td>${run.environment || '-'}</td>
         <td>${new Date(run.runTimestamp).toLocaleString()}</td>
       `;
       tr.addEventListener('click', async () => {
@@ -684,7 +685,7 @@ async function loadIntegrationRuns(projectId, preferredRunId = null) {
   } catch (err) {
     selectedIntegrationRunId = null;
     integrationRunChain.innerHTML = `<p class="muted">${err.message}</p>`;
-    integrationRunsBody.innerHTML = `<tr><td colspan="7" class="muted">${err.message}</td></tr>`;
+    integrationRunsBody.innerHTML = `<tr><td colspan="8" class="muted">${err.message}</td></tr>`;
     integrationFailedSpecsBody.innerHTML = '<tr><td colspan="4" class="muted">Failed to load selected run details.</td></tr>';
     integrationPassRate.textContent = '-';
   }

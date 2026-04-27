@@ -47,6 +47,7 @@ type integrationPayload struct {
 	Author        string         `json:"author,omitempty"`
 	TriggerType   string         `json:"triggerType"`
 	RunTimestamp  string         `json:"runTimestamp"`
+	Environment   *string        `json:"environment,omitempty"`
 	GinkgoReport  map[string]any `json:"ginkgoReport"`
 }
 
@@ -155,6 +156,7 @@ func runIntegrationUpload(args []string) {
 	commitSHA := fs.String("commit-sha", envOrDefault("COVERAGE_COMMIT_SHA", "local"), "Commit SHA")
 	author := fs.String("author", envOrDefault("COVERAGE_AUTHOR", "local"), "Author")
 	triggerType := fs.String("trigger-type", "manual", "Trigger type: push|pr|manual")
+	environment := fs.String("environment", "", "Environment: test|stage|production (optional)")
 	runTimestamp := fs.String("run-timestamp", time.Now().UTC().Format(time.RFC3339), "Run timestamp (RFC3339)")
 	if err := fs.Parse(args); err != nil {
 		exitErr("parse flags", err)
@@ -185,6 +187,14 @@ func runIntegrationUpload(args []string) {
 		group = projectGroup
 	}
 
+	var env *string
+	if *environment != "" {
+		if *environment != "test" && *environment != "stage" && *environment != "production" {
+			exitErr("validate input", fmt.Errorf("-environment must be one of: test, stage, production"))
+		}
+		env = environment
+	}
+
 	payload := integrationPayload{
 		ProjectKey:    *projectKey,
 		ProjectName:   *projectName,
@@ -195,6 +205,7 @@ func runIntegrationUpload(args []string) {
 		Author:        *author,
 		TriggerType:   *triggerType,
 		RunTimestamp:  *runTimestamp,
+		Environment:   env,
 		GinkgoReport:  normalizeReport(report),
 	}
 
