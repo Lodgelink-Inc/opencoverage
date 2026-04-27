@@ -468,7 +468,8 @@ h3 {
   background: rgba(20, 35, 60, 0.08);
   min-height: 0;
   overflow: auto;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto;
+  grid-auto-rows: max-content;
   align-content: start;
 }
 
