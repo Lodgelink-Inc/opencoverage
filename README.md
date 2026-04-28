@@ -25,6 +25,7 @@ Self-hosted Go code coverage API and dashboard for ingesting test coverage, comp
 - REST API with `/v1` endpoints for ingest, history, and latest comparison
 - Coverage CLI to convert `coverage.out` into API-ready JSON payloads
 - Dashboard frontend for project, multi-branch trend, comparison, and heatmap visualization
+- Integration test result ingestion and heatmap visualization
 - API key authentication for protected endpoints
 - Hexagonal Architecture (ports and adapters)
 
@@ -105,6 +106,11 @@ Main endpoints:
 - `GET /v1/projects/{projectId}/coverage-runs/latest-comparison`
 - `GET /v1/projects/{projectId}/branches`
 - `GET /v1/projects/{projectId}/contributors`
+- `POST /v1/integration-test-runs`
+- `GET /v1/integration-test-runs/heatmap`
+- `GET /v1/projects/{projectId}/integration-test-runs`
+- `GET /v1/projects/{projectId}/integration-test-runs/latest-comparison`
+- `GET /v1/projects/{projectId}/integration-test-runs/{runId}`
 
 For full API contract details, see [SPEC.md](SPEC.md).
 
@@ -225,6 +231,11 @@ Frontend highlights:
 - The branch selector is used for latest-comparison details, not for filtering the trend chart.
 - Heatmap overlay shows all projects grouped by team, with tiles color-coded on a -3% to +3% delta scale (green = improved, red = regressed). A scale legend is displayed in the overlay header.
 - Top Contributors overlay shows the leading commit contributors per project across all teams, grouped the same way as the heatmap.
+- Integration Tests screen provides per-project integration test run history and failed spec details.
+- Integration Run Chain is rendered oldest to newest (newest on the right) and shows up to 5 runs.
+- Integration Pass Rate card shows run success ratio percentage computed as `passed runs / failed runs * 100` over the returned run-list window (up to last 20 runs).
+- Integration Heatmap shows all projects grouped by team but displays default-branch runs only, with `✅`/`❌` run markers and newest-run status tint per project row.
+- Integration Tests sidebar now supports group-first project navigation: filter by project group, then select a project from the filtered list (combined with project search).
 
 ## Typical Integration Flow
 

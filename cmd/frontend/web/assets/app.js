@@ -8,6 +8,9 @@ const deltaCoverage = document.getElementById('deltaCoverage');
 const thresholdPercent = document.getElementById('thresholdPercent');
 const thresholdStatus = document.getElementById('thresholdStatus');
 const refreshProjects = document.getElementById('refreshProjects');
+const autoRefreshInterval = document.getElementById('autoRefreshInterval');
+const autoRefreshStatus = document.getElementById('autoRefreshStatus');
+const autoRefreshProgressBar = document.getElementById('autoRefreshProgressBar');
 const openHeatmap = document.getElementById('openHeatmap');
 const closeHeatmap = document.getElementById('closeHeatmap');
 const heatmapOverlay = document.getElementById('heatmapOverlay');
@@ -18,6 +21,7 @@ const contributorsOverlay = document.getElementById('contributorsOverlay');
 const contributorsGrid = document.getElementById('contributorsGrid');
 const contributorsOverlayMeta = document.getElementById('contributorsOverlayMeta');
 const projectSelector = document.getElementById('projectSelector');
+const projectGroupFilter = document.getElementById('projectGroupFilter');
 const projectSearchInput = document.getElementById('projectSearchInput');
 const compareCard = document.getElementById('compareCard');
 const compareSummary = document.getElementById('compareSummary');
@@ -43,9 +47,31 @@ let trendChart = null;
 let heatmapLayoutFrame = 0;
 let contributorsLayoutFrame = 0;
 let trendRequestSequence = 0;
+const allGroupsFilterValue = '__all__';
+const ungroupedFilterValue = '__ungrouped__';
 const sidebarCollapsedKey = 'opencoverage.sidebarCollapsed';
+const homeAutoRefreshStorageKey = 'opencoverage.autoRefresh.home';
+const homeDefaultAutoRefreshInterval = '60s';
+const homeAutoRefreshIntervals = Object.freeze({
+  off: 0,
+  '15s': 15000,
+  '30s': 30000,
+  '60s': 60000,
+  '5m': 300000,
+});
+let homeRefreshTimeoutId = 0;
+let homeRefreshInFlight = false;
+let homeRefreshCountdownIntervalId = 0;
+let homeNextRefreshAt = 0;
+let homeRefreshDurationMs = 0;
 
-refreshProjects.addEventListener('click', () => loadProjects());
+refreshProjects.addEventListener('click', async () => {
+  await performHomeRefresh('manual');
+});
+autoRefreshInterval.addEventListener('change', () => {
+  persistHomeAutoRefreshInterval(autoRefreshInterval.value);
+  scheduleHomeAutoRefresh();
+});
 toggleSidebar.addEventListener('click', () => {
   const shouldCollapse = !appShell.classList.contains('sidebar-collapsed');
   setSidebarCollapsed(shouldCollapse);
@@ -69,6 +95,10 @@ closeContributors.addEventListener('click', () => toggleContributorsOverlay(fals
 projectSelector.addEventListener('change', async (e) => {
   await selectProject(e.target.value);
 });
+projectGroupFilter.addEventListener('change', async () => {
+  filterAndRenderProjects(projectSearchInput.value);
+  await ensureSelectedProjectIsVisible();
+});
 projectSearchInput.addEventListener('input', (e) => {
   filterAndRenderProjects(e.target.value);
 });
@@ -80,9 +110,183 @@ window.addEventListener('resize', () => {
   scheduleHeatmapLayout();
   scheduleContributorsLayout();
 });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearHomeAutoRefresh();
+    updateHomeAutoRefreshStatus();
+    return;
+  }
+  scheduleHomeAutoRefresh();
+});
 
 initializeSidebarState();
+initializeHomeAutoRefreshControl();
 loadAppMeta();
+
+function getQueryParam(name) {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name);
+}
+
+function initializeHomeAutoRefreshControl() {
+  const persisted = window.localStorage.getItem(homeAutoRefreshStorageKey);
+  const nextValue = Object.prototype.hasOwnProperty.call(homeAutoRefreshIntervals, persisted)
+    ? persisted
+    : homeDefaultAutoRefreshInterval;
+  autoRefreshInterval.value = nextValue;
+  updateHomeAutoRefreshStatus();
+}
+
+function getHomeAutoRefreshIntervalValue() {
+  const selectedValue = autoRefreshInterval.value;
+  return Object.prototype.hasOwnProperty.call(homeAutoRefreshIntervals, selectedValue)
+    ? selectedValue
+    : homeDefaultAutoRefreshInterval;
+}
+
+function getHomeAutoRefreshIntervalMs() {
+  return homeAutoRefreshIntervals[getHomeAutoRefreshIntervalValue()] || 0;
+}
+
+function persistHomeAutoRefreshInterval(value) {
+  const nextValue = Object.prototype.hasOwnProperty.call(homeAutoRefreshIntervals, value)
+    ? value
+    : homeDefaultAutoRefreshInterval;
+  window.localStorage.setItem(homeAutoRefreshStorageKey, nextValue);
+}
+
+function clearHomeAutoRefresh() {
+  if (!homeRefreshTimeoutId) return;
+  window.clearTimeout(homeRefreshTimeoutId);
+  homeRefreshTimeoutId = 0;
+}
+
+function setHomeAutoRefreshProgress(progressRatio) {
+  if (!autoRefreshProgressBar) return;
+  const safeRatio = Math.max(0, Math.min(1, progressRatio));
+  autoRefreshProgressBar.style.transform = `scaleX(${safeRatio})`;
+}
+
+function clearHomeCountdownTicker() {
+  if (!homeRefreshCountdownIntervalId) return;
+  window.clearInterval(homeRefreshCountdownIntervalId);
+  homeRefreshCountdownIntervalId = 0;
+}
+
+function formatRemainingTime(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+function updateHomeAutoRefreshStatus() {
+  if (!autoRefreshStatus) return;
+
+  const intervalLabel = getHomeAutoRefreshIntervalValue();
+  if (intervalLabel === 'off') {
+    autoRefreshStatus.textContent = 'Auto refresh is off.';
+    setHomeAutoRefreshProgress(0);
+    return;
+  }
+
+  if (document.hidden) {
+    autoRefreshStatus.textContent = `Paused (${intervalLabel}) while tab is hidden.`;
+    setHomeAutoRefreshProgress(0);
+    return;
+  }
+
+  if (homeRefreshInFlight) {
+    autoRefreshStatus.textContent = `Refreshing now (${intervalLabel}).`;
+    setHomeAutoRefreshProgress(0);
+    return;
+  }
+
+  if (!homeNextRefreshAt) {
+    autoRefreshStatus.textContent = `Scheduled every ${intervalLabel}.`;
+    setHomeAutoRefreshProgress(0);
+    return;
+  }
+
+  const remainingMs = homeNextRefreshAt - Date.now();
+  autoRefreshStatus.textContent = `Next refresh in ${formatRemainingTime(remainingMs)} (${intervalLabel}).`;
+  const denominator = homeRefreshDurationMs || getHomeAutoRefreshIntervalMs() || 1;
+  setHomeAutoRefreshProgress(remainingMs / denominator);
+}
+
+function scheduleHomeAutoRefresh() {
+  clearHomeAutoRefresh();
+  clearHomeCountdownTicker();
+  homeNextRefreshAt = 0;
+  homeRefreshDurationMs = 0;
+
+  const intervalMs = getHomeAutoRefreshIntervalMs();
+  if (!intervalMs || document.hidden) {
+    updateHomeAutoRefreshStatus();
+    return;
+  }
+
+  homeRefreshDurationMs = intervalMs;
+  homeNextRefreshAt = Date.now() + intervalMs;
+  setHomeAutoRefreshProgress(1);
+  updateHomeAutoRefreshStatus();
+  homeRefreshCountdownIntervalId = window.setInterval(() => {
+    updateHomeAutoRefreshStatus();
+  }, 200);
+
+  homeRefreshTimeoutId = window.setTimeout(async () => {
+    if (document.hidden || homeRefreshInFlight) {
+      scheduleHomeAutoRefresh();
+      return;
+    }
+
+    await performHomeRefresh('auto');
+  }, intervalMs);
+}
+
+function setHomeRefreshButtonBusy(busy) {
+  refreshProjects.disabled = busy;
+  refreshProjects.textContent = busy ? 'Refreshing...' : 'Refresh';
+}
+
+async function performHomeRefresh(source = 'manual') {
+  if (homeRefreshInFlight) {
+    return false;
+  }
+
+  homeRefreshInFlight = true;
+  clearHomeAutoRefresh();
+  clearHomeCountdownTicker();
+  homeNextRefreshAt = 0;
+  homeRefreshDurationMs = 0;
+  updateHomeAutoRefreshStatus();
+
+  const contributorsWasOpen = contributorsOverlay.classList.contains('open');
+
+  if (source === 'manual') {
+    setHomeRefreshButtonBusy(true);
+  }
+
+  try {
+    await loadProjects();
+
+    if (contributorsWasOpen) {
+      await loadAllContributors();
+    }
+
+    return true;
+  } finally {
+    if (source === 'manual') {
+      setHomeRefreshButtonBusy(false);
+    }
+
+    homeRefreshInFlight = false;
+    scheduleHomeAutoRefresh();
+  }
+}
 
 function toggleHeatmapOverlay(open) {
   if (open) {
@@ -170,16 +374,44 @@ async function loadProjects() {
 
     projects = items;
     allProjects = items;
-    filteredProjects = items;
-    renderProjectSelector();
+    renderProjectGroupFilter();
+    filterAndRenderProjects(projectSearchInput.value);
 
-    if (!selectedProjectId && projects.length > 0) {
-      await selectProject(projects[0].id);
-     renderProjectSelector(); // Update dropdown to show selected project
-     } else if (selectedProjectId) {
-       await selectProject(selectedProjectId);
-       renderProjectSelector(); // Update dropdown to show selected project
-     }
+    const nextSelectedProjectId = filteredProjects.some((project) => project.id === selectedProjectId)
+      ? selectedProjectId
+      : (filteredProjects[0]?.id || null);
+
+    if (!nextSelectedProjectId) {
+      selectedProjectId = null;
+      selectedBranch = '';
+      if (items.length === 0) {
+        selectedProjectName.textContent = 'No projects found';
+        selectedProjectMeta.textContent = 'Ingest coverage data to populate the dashboard.';
+      } else {
+        selectedProjectName.textContent = 'No projects for current filter';
+        selectedProjectMeta.textContent = 'Adjust group and search filters to select a project.';
+      }
+      branchSelector.innerHTML = '<option value="">No branches available</option>';
+      runsBody.innerHTML = '<tr><td colspan="5" class="muted">No runs found.</td></tr>';
+      packagesBody.innerHTML = '<tr><td colspan="5" class="muted">No comparison data available.</td></tr>';
+      currentCoverage.textContent = '-';
+      previousCoverage.textContent = '-';
+      deltaCoverage.textContent = '-';
+      thresholdPercent.textContent = '-';
+      thresholdStatus.textContent = '-';
+      compareSummary.textContent = 'No project selected.';
+      compareCurrent.textContent = '-';
+      compareBaseline.textContent = '-';
+      compareRunType.textContent = '-';
+      compareCard.classList.remove('pr-mode');
+      renderProjectSelector();
+    } else if (nextSelectedProjectId === selectedProjectId) {
+      await selectProject(nextSelectedProjectId, { resetBranch: false });
+      renderProjectSelector();
+    } else {
+      await selectProject(nextSelectedProjectId);
+      renderProjectSelector();
+    }
 
     await loadHeatmap();
   } catch (err) {
@@ -189,6 +421,39 @@ async function loadProjects() {
   }
 }
 
+function getProjectGroupValue(project) {
+  const rawGroup = typeof project?.group === 'string' ? project.group.trim() : '';
+  return rawGroup || ungroupedFilterValue;
+}
+
+function renderProjectGroupFilter() {
+  const selectedValue = projectGroupFilter.value || allGroupsFilterValue;
+  const groupValues = Array.from(new Set(allProjects.map((project) => getProjectGroupValue(project))));
+  groupValues.sort((a, b) => {
+    if (a === ungroupedFilterValue) return 1;
+    if (b === ungroupedFilterValue) return -1;
+    return a.localeCompare(b);
+  });
+
+  projectGroupFilter.innerHTML = '';
+
+  const allOption = document.createElement('option');
+  allOption.value = allGroupsFilterValue;
+  allOption.textContent = 'All groups';
+  projectGroupFilter.appendChild(allOption);
+
+  for (const groupValue of groupValues) {
+    const option = document.createElement('option');
+    option.value = groupValue;
+    option.textContent = groupValue === ungroupedFilterValue ? 'Ungrouped' : groupValue;
+    projectGroupFilter.appendChild(option);
+  }
+
+  projectGroupFilter.value = [allGroupsFilterValue, ...groupValues].includes(selectedValue)
+    ? selectedValue
+    : allGroupsFilterValue;
+}
+
 function renderProjectSelector() {
   projectSelector.innerHTML = '';
   
@@ -196,6 +461,14 @@ function renderProjectSelector() {
   emptyOption.value = '';
   emptyOption.textContent = 'Select a project...';
   projectSelector.appendChild(emptyOption);
+
+  if (filteredProjects.length === 0) {
+    const noResultsOption = document.createElement('option');
+    noResultsOption.value = '';
+    noResultsOption.textContent = 'No projects match current filters';
+    noResultsOption.disabled = true;
+    projectSelector.appendChild(noResultsOption);
+  }
   
   for (const project of filteredProjects) {
     const option = document.createElement('option');
@@ -209,22 +482,85 @@ function renderProjectSelector() {
 
 function filterAndRenderProjects(searchTerm) {
   const term = searchTerm.toLowerCase();
-  if (!term) {
-    filteredProjects = allProjects;
-  } else {
-    filteredProjects = allProjects.filter(p => {
-      const name = (p.name || '').toLowerCase();
-      const key = (p.projectKey || '').toLowerCase();
-      return name.includes(term) || key.includes(term);
-    });
-  }
+  const selectedGroup = projectGroupFilter.value || allGroupsFilterValue;
+  filteredProjects = allProjects.filter((p) => {
+    const groupMatches = selectedGroup === allGroupsFilterValue
+      || getProjectGroupValue(p) === selectedGroup;
+    if (!groupMatches) return false;
+    if (!term) return true;
+
+    const name = (p.name || '').toLowerCase();
+    const key = (p.projectKey || '').toLowerCase();
+    return name.includes(term) || key.includes(term);
+  });
+
   renderProjectSelector();
 }
 
-async function selectProject(projectId) {
+async function ensureSelectedProjectIsVisible() {
+  const selectedVisible = filteredProjects.some((project) => project.id === selectedProjectId);
+  if (selectedVisible) {
+    renderProjectSelector();
+    return;
+  }
+
+  const nextProjectId = filteredProjects[0]?.id || null;
+  if (!nextProjectId) {
+    selectedProjectId = null;
+    selectedBranch = '';
+    selectedProjectName.textContent = 'No projects for current filter';
+    selectedProjectMeta.textContent = 'Adjust group and search filters to select a project.';
+    branchSelector.innerHTML = '<option value="">No branches available</option>';
+    runsBody.innerHTML = '<tr><td colspan="5" class="muted">No runs found.</td></tr>';
+    packagesBody.innerHTML = '<tr><td colspan="5" class="muted">No comparison data available.</td></tr>';
+    currentCoverage.textContent = '-';
+    previousCoverage.textContent = '-';
+    deltaCoverage.textContent = '-';
+    thresholdPercent.textContent = '-';
+    thresholdStatus.textContent = '-';
+    compareSummary.textContent = 'No project selected.';
+    compareCurrent.textContent = '-';
+    compareBaseline.textContent = '-';
+    compareRunType.textContent = '-';
+    compareCard.classList.remove('pr-mode');
+    renderProjectSelector();
+    return;
+  }
+
+  await selectProject(nextProjectId);
+  renderProjectSelector();
+}
+
+async function selectProject(projectId, options = {}) {
+  const { resetBranch = true } = options;
+
+  if (!projectId) {
+    selectedProjectId = null;
+    selectedBranch = '';
+    selectedProjectName.textContent = 'Select a project';
+    selectedProjectMeta.textContent = 'Choose a project from the left menu.';
+    branchSelector.innerHTML = '<option value="">No branches available</option>';
+    runsBody.innerHTML = '<tr><td colspan="5" class="muted">No runs found.</td></tr>';
+    packagesBody.innerHTML = '<tr><td colspan="5" class="muted">No comparison data available.</td></tr>';
+    currentCoverage.textContent = '-';
+    previousCoverage.textContent = '-';
+    deltaCoverage.textContent = '-';
+    thresholdPercent.textContent = '-';
+    thresholdStatus.textContent = '-';
+    compareSummary.textContent = 'No project selected.';
+    compareCurrent.textContent = '-';
+    compareBaseline.textContent = '-';
+    compareRunType.textContent = '-';
+    compareCard.classList.remove('pr-mode');
+    renderProjectSelector();
+    renderHeatmap();
+    return;
+  }
+
   selectedProjectId = projectId;
-  selectedBranch = '';
-  projectSearchInput.value = '';
+  if (resetBranch) {
+    selectedBranch = '';
+  }
   renderHeatmap();
 
   const project = getProjectById(projectId);
@@ -388,30 +724,16 @@ async function loadHeatmap() {
 }
 
 async function loadHeatmapComparison(project) {
-  // Prefer server comparison logic so heatmap uses the same baseline rules as the detail view.
-  try {
-    const compareRes = await fetch(`/api/projects/${project.id}/coverage-runs/latest-comparison`);
-    if (compareRes.ok) {
-      const compareData = await compareRes.json();
-      const comparison = normalizeHeatmapComparison(compareData?.comparison);
-      if (comparison) {
-        return comparison;
-      }
-    }
-  } catch (err) {
-    // Fall back below.
-  }
-
   const defaultBranch = project.defaultBranch || 'main';
   const runsUrl = new URL(`/api/projects/${project.id}/coverage-runs`, window.location.origin);
   runsUrl.searchParams.set('branch', defaultBranch);
   runsUrl.searchParams.set('page', '1');
   runsUrl.searchParams.set('pageSize', '2');
   const runsRes = await fetch(runsUrl.toString());
-  if (!runsRes.ok) throw new Error(`failed to load default branch runs (${runsRes.status})`);
+  if (!runsRes.ok) throw new Error(`failed to load heatmap comparison runs (${runsRes.status})`);
   const runsData = await runsRes.json();
-  const fallbackComparison = buildHeatmapComparisonFromDefaultBranch(runsData.items || [], project);
-  return normalizeHeatmapComparison(fallbackComparison);
+  const comparison = buildHeatmapComparisonFromDefaultBranch(runsData.items || [], project);
+  return normalizeHeatmapComparison(comparison);
 }
 
 function normalizeHeatmapComparison(comparison) {
@@ -466,7 +788,7 @@ function buildHeatmapComparisonFromDefaultBranch(runs, project) {
   }
 
   return {
-    baselineSource: 'previous_default_branch_commit',
+    baselineSource: 'previous_main_branch_commit',
     previousTotalCoveragePercent: Number.isFinite(previous) ? previous : null,
     currentTotalCoveragePercent: current,
     deltaPercent,
@@ -485,36 +807,26 @@ function getGroupColorClass(groupName, groupItems) {
     return 'neutral';
   }
 
-  let totalCoverage = 0;
-  let countWithCoverage = 0;
-  let passedCount = 0;
-  let failedCount = 0;
+  let upCount = 0;
+  let downCount = 0;
 
   for (const item of groupItems) {
-    const current = Number(item.comparison?.currentTotalCoveragePercent);
-    if (Number.isFinite(current)) {
-      totalCoverage += current;
-      countWithCoverage++;
-    }
-
-    const threshold = item.comparison?.thresholdStatus;
-
-    if (threshold === 'passed') {
-      passedCount++;
-    } else if (threshold === 'failed') {
-      failedCount++;
+    const direction = item.comparison?.direction;
+    if (direction === 'up') {
+      upCount++;
+    } else if (direction === 'down') {
+      downCount++;
     }
   }
 
-  if (passedCount > failedCount) {
+  if (upCount > downCount) {
     return 'up';
   }
-  if (failedCount > passedCount) {
+  if (downCount > upCount) {
     return 'down';
   }
 
-  const avgCoverage = countWithCoverage > 0 ? totalCoverage / countWithCoverage : 0;
-  return avgCoverage >= 80 ? 'up' : 'down';
+  return 'neutral';
 }
 
 function renderHeatmap() {
@@ -804,6 +1116,10 @@ function renderBranchSelector() {
     option.textContent = branch;
     branchSelector.appendChild(option);
   }
+
+  if (selectedBranch && !availableBranches.includes(selectedBranch)) {
+    selectedBranch = '';
+  }
   
   branchSelector.value = selectedBranch;
 }
@@ -876,6 +1192,10 @@ async function loadTrendChart(projectId, defaultBranch, branches = availableBran
   const canvas = document.getElementById('trendChart');
   if (!canvas) return;
 
+  const trendTextColor = '#1f2937';
+  const trendMutedTextColor = '#4b5563';
+  const trendGridColor = 'rgba(148, 163, 184, 0.38)';
+
   const requestSequence = ++trendRequestSequence;
 
   try {
@@ -943,7 +1263,7 @@ async function loadTrendChart(projectId, defaultBranch, branches = availableBran
           legend: {
             display: true,
             labels: {
-              color: '#d5def2',
+              color: trendTextColor,
               font: { family: 'Space Grotesk', size: 12 },
             },
           },
@@ -964,9 +1284,9 @@ async function loadTrendChart(projectId, defaultBranch, branches = availableBran
         scales: {
           x: {
             type: 'linear',
-            grid: { color: 'rgba(39, 52, 81, 0.5)' },
+            grid: { color: trendGridColor },
             ticks: {
-              color: '#a4b2cf',
+              color: trendMutedTextColor,
               font: { family: 'JetBrains Mono', size: 11 },
               callback: (value) => formatTrendTick(value),
               maxTicksLimit: 5,
@@ -974,16 +1294,16 @@ async function loadTrendChart(projectId, defaultBranch, branches = availableBran
             title: {
               display: true,
               text: 'Run Time',
-              color: '#a4b2cf',
+              color: trendMutedTextColor,
               font: { family: 'Space Grotesk', size: 11 },
             },
           },
           y: {
             min: minVal,
             max: maxVal,
-            grid: { color: 'rgba(39, 52, 81, 0.5)' },
+            grid: { color: trendGridColor },
             ticks: {
-              color: '#a4b2cf',
+              color: trendMutedTextColor,
               font: { family: 'Space Grotesk', size: 11 },
               callback: (v) => `${v}%`,
             },
@@ -1154,4 +1474,9 @@ function directionClass(direction) {
   return 'equal';
 }
 
-loadProjects();
+(async () => {
+  await performHomeRefresh('initial');
+  if (getQueryParam('heatmap') === 'open') {
+    toggleHeatmapOverlay(true);
+  }
+})();
