@@ -18,6 +18,7 @@ DATABASE_URL ?= postgres://$(DB_USER):$(DB_PASSWORD)@localhost:$(DB_PORT)/$(DB_N
 .PHONY: coverage-file coverage-upload
 .PHONY: frontend-run frontend-dev
 .PHONY: update-branch
+.PHONY: update-branch cherry-pick-arxdsilva
 
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_PAYLOAD ?= coverage-upload.json
@@ -125,3 +126,10 @@ coverage-upload:
 
 update-branch:
 	git fetch arxdsilva && git merge arxdsilva/main
+
+# Cherry-pick the latest commit from arxdsilva/main into a new branch
+cherry-pick-arxdsilva:
+	git fetch arxdsilva
+	branch_name=cherry-arxdsilva-`git log arxdsilva/main -1 --format=%h` && \
+	git checkout -b $$branch_name && \
+	git cherry-pick `git log arxdsilva/main -1 --format=%h`
