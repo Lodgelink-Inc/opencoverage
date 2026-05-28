@@ -50,6 +50,8 @@ help:
 	@echo "  make coverage-file      - Generate coverage.out and API payload JSON file"
 	@echo "  make coverage-upload    - Generate + upload coverage payload to running API"
 	@echo "  make update-branch      - Fetch and merge current branch with arxdsilva/main"
+	@echo "  make cherry-pick-arxdsilva commits='<sha1 sha2 ...>' [branch=<name>] - Cherry-pick selected SHAs from arxdsilva/main"
+	@echo "  make cherry-pick-arxdsilva last=<n> [branch=<name>] - Cherry-pick the last n commits from arxdsilva/main"
 
 deps:
 	go mod tidy
@@ -127,9 +129,47 @@ coverage-upload:
 update-branch:
 	git fetch arxdsilva && git merge arxdsilva/main
 
-# Cherry-pick the latest commit from arxdsilva/main into a new branch
+# Cherry-pick user-selected commits from arxdsilva/main into a new branch.
+# Supported selectors:
+# - commits: explicit SHA list (space-separated).
+# - last: latest N commits.
 cherry-pick-arxdsilva:
+	@if [ -z "$(commits)" ] && [ -z "$(last)" ]; then \
+		echo "Usage:"; \
+		echo "  make cherry-pick-arxdsilva commits='<sha1 sha2 ...>' [branch=<name>]"; \
+		echo "  make cherry-pick-arxdsilva last=<n> [branch=<name>]"; \
+		exit 1; \
+	fi
+	@if [ -n "$(commits)" ] && [ -n "$(last)" ]; then \
+		echo "Use only one selector: commits or last"; \
+		exit 1; \
+	fi
 	git fetch arxdsilva
-	branch_name=cherry-arxdsilva-`git log arxdsilva/main -1 --format=%h` && \
-	git checkout -b $$branch_name && \
-	git cherry-pick `git log arxdsilva/main -1 --format=%h`
+	branch_name="$(branch)"; \
+	if [ -z "$$branch_name" ]; then \
+		branch_name=cherry-arxdsilva-$$(date +%Y%m%d%H%M%S); \
+	fi; \
+	if [ -n "$(commits)" ]; then \
+		commit_list="$(commits)"; \
+	else \
+		case "$(last)" in \
+			*[!0-9]*|'') echo "last must be a positive integer"; exit 1 ;; \
+		esac; \
+		if [ "$(last)" -le 0 ]; then \
+			echo "last must be greater than zero"; \
+			exit 1; \
+		fi; \
+		commit_list="$$(git rev-list --max-count "$(last)" --reverse arxdsilva/main)"; \
+	fi; \
+	if [ -z "$$commit_list" ]; then \
+		echo "No commits were resolved for cherry-pick"; \
+		exit 1; \
+	fi; \
+	git checkout -b "$$branch_name" && \
+	for commit in $$commit_list; do \
+		git merge-base --is-ancestor "$$commit" arxdsilva/main || { \
+			echo "Commit $$commit is not in arxdsilva/main"; \
+			exit 1; \
+		}; \
+		git cherry-pick "$$commit" || exit 1; \
+	done
