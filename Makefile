@@ -35,7 +35,7 @@ help:
 	@echo "  make run                - Run API locally"
 	@echo "  make frontend-run       - Run frontend dashboard locally on :8090"
 	@echo "  make frontend-dev       - Run API and frontend together (local)"
-	@echo "  make compose-up         - Start db + migrate + seed + api + frontend via docker compose"
+	@echo "  make compose-up         - Start db + api + seed + frontend + mcp via docker compose"
 	@echo "                            Example with busy local 5432: DB_PORT=5433 make compose-up"
 	@echo "                            If upgrading Postgres major versions: make compose-down then make compose-up"
 	@echo "  make compose-down       - Stop docker compose services"
@@ -50,6 +50,7 @@ help:
 	@echo "  make coverage-file      - Generate coverage.out and API payload JSON file"
 	@echo "  make coverage-upload    - Generate + upload coverage payload to running API"
 	@echo "  make update-branch      - Fetch and merge current branch with arxdsilva/main"
+	@echo "  make cherry-pick-arxdsilva N=<num> - Cherry-pick last N commits from arxdsilva/main"
 
 deps:
 	go mod tidy
@@ -127,9 +128,13 @@ coverage-upload:
 update-branch:
 	git fetch arxdsilva && git merge arxdsilva/main
 
-# Cherry-pick the latest commit from arxdsilva/main into a new branch
+# Cherry-pick the last N commits from arxdsilva/main into a new branch
 cherry-pick-arxdsilva:
+	@if [ -z "$(N)" ]; then echo "Usage: make cherry-pick-arxdsilva N=<number_of_commits>"; exit 1; fi
 	git fetch arxdsilva
-	branch_name=cherry-arxdsilva-`git log arxdsilva/main -1 --format=%h` && \
+	has_changes=$$(git status --porcelain); \
+	if [ -n "$$has_changes" ]; then git stash; fi; \
+	branch_name=cherry-arxdsilva-n$(N)-`git log arxdsilva/main -1 --format=%h` && \
 	git checkout -b $$branch_name && \
-	git cherry-pick `git log arxdsilva/main -1 --format=%h`
+	if [ -n "$$has_changes" ]; then git stash pop && git add -A && git commit -m "Local changes"; fi && \
+	git cherry-pick arxdsilva/main~$(N)..arxdsilva/main
