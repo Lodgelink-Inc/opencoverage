@@ -241,6 +241,67 @@ Useful options:
 - `-path-strip-prefix` for deterministic path normalization
 - `-dry-run` and `-out <payload.json>` to inspect payload without upload
 
+### Upload E2E Test Reports (Playwright/Appium)
+
+The CLI supports uploading E2E test reports from Playwright (JSON) and Appium (JUnit XML) to the `/v1/e2e-test-runs` endpoint.
+
+**Playwright JSON report:**
+
+Generate the Playwright JSON report:
+
+```bash
+npx playwright test --reporter=json > playwright-report.json
+```
+
+Upload the report:
+
+```bash
+go run ./cmd/coveragecli e2e-upload \
+  -e2e-report playwright-report.json \
+  -report-type playwright \
+  -api-url http://localhost:8080/v1/e2e-test-runs \
+  -api-key dev-local-key \
+  -project-key github.com/example/frontend-repo \
+  -project-name frontend-repo \
+  -project-group frontend \
+  -default-branch main \
+  -branch main \
+  -commit-sha abc123 \
+  -author alice \
+  -trigger-type push \
+  -environment test
+```
+
+**Appium JUnit XML report:**
+
+Appium test frameworks typically output JUnit XML reports. Upload directly:
+
+```bash
+go run ./cmd/coveragecli e2e-upload \
+  -e2e-report appium-results.xml \
+  -report-type appium \
+  -api-url http://localhost:8080/v1/e2e-test-runs \
+  -api-key dev-local-key \
+  -project-key github.com/example/mobile-app \
+  -project-name mobile-app \
+  -project-group mobile \
+  -default-branch main \
+  -branch main \
+  -commit-sha abc123 \
+  -author alice \
+  -trigger-type push \
+  -environment stage
+```
+
+Key flags:
+
+- `-e2e-report` — path to the report file (`.json` or `.xml`)
+- `-report-type playwright|appium` — report format (default `playwright`)
+- `-environment test|stage|prod` — optional environment tag
+- `-run-timestamp` — RFC3339 timestamp (defaults to current time)
+
+**Note:** Playwright JUnit XML and Appium JSON formats are not yet supported. Use Playwright JSON or Appium JUnit XML respectively.
+
 ## Architecture
 
 This project follows Hexagonal Architecture (ports and adapters):
