@@ -538,38 +538,14 @@ func runE2EUpload(args []string) {
 	// Normalize report structure based on report type and file format
 	var normalizedReport map[string]any
 	if isXML {
-		var junitData JUnitTestSuites
-		if err := xml.Unmarshal(rawReport, &junitData); err != nil {
+		normalizedReport, err = normalizeE2EXMLReport(rawReport, reportType)
+		if err != nil {
 			exitErr("parse e2e report xml", err)
 		}
-		switch *reportType {
-		case "playwright":
-			var err error
-			normalizedReport, err = normalizePlaywrightJUnit(junitData)
-			if err != nil {
-				exitErr("normalize playwright junit", err)
-			}
-		case "appium":
-			var err error
-			normalizedReport, err = normalizeAppiumJUnit(junitData)
-			if err != nil {
-				exitErr("normalize appium junit", err)
-			}
-		default:
-			exitErr("validate input", fmt.Errorf("unsupported report type: %s", *reportType))
-		}
 	} else {
-		var report map[string]any
-		if err := json.Unmarshal(rawReport, &report); err != nil {
+		normalizedReport, err = normalizeE2EJsonReport(rawReport, reportType)
+		if err != nil {
 			exitErr("parse e2e report json", err)
-		}
-		switch *reportType {
-		case "playwright":
-			normalizedReport = normalizePlaywrightReport(report)
-		case "appium":
-			exitErr("validate input", fmt.Errorf("appium JSON report format is not yet supported; use JUnit XML (.xml)"))
-		default:
-			exitErr("validate input", fmt.Errorf("unsupported report type: %s", *reportType))
 		}
 	}
 
@@ -609,6 +585,46 @@ func runE2EUpload(args []string) {
 	if status >= http.StatusBadRequest {
 		exitErr("upload report", fmt.Errorf("server returned status %d", status))
 	}
+}
+
+// unmarshal the rawReport XML into JUnitTestSuites and normalize it based on the reportType (playwright or appium).
+func normalizeE2EXMLReport(rawReport []byte, reportType *string) (normalizedReport map[string]any, err error) {
+	var junitData JUnitTestSuites
+	if err := xml.Unmarshal(rawReport, &junitData); err != nil {
+		return nil, fmt.Errorf("parse e2e report xml: %w", err)
+	}
+	switch *reportType {
+	case "playwright":
+		normalizedReport, err = normalizePlaywrightJUnit(junitData)
+		if err != nil {
+			return nil, fmt.Errorf("normalize playwright junit: %w", err)
+		}
+	case "appium":
+		normalizedReport, err = normalizeAppiumJUnit(junitData)
+		if err != nil {
+			return nil, fmt.Errorf("normalize appium junit: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported report type: %s", *reportType)
+	}
+	return normalizedReport, nil
+}
+
+// unmarshal the rawReport JSON into a map[string]any and normalize it based on the reportType (playwright or appium).
+func normalizeE2EJsonReport(rawReport []byte, reportType *string) (normalizedReport map[string]any, err error) {
+	var report map[string]any
+	if err := json.Unmarshal(rawReport, &report); err != nil {
+		return nil, fmt.Errorf("parse e2e report json: %w", err)
+	}
+	switch *reportType {
+	case "playwright":
+		normalizedReport = normalizePlaywrightReport(report)
+	case "appium":
+		return nil, fmt.Errorf("appium JSON report format is not yet supported; use JUnit XML (.xml)")
+	default:
+		return nil, fmt.Errorf("unsupported report type: %s", *reportType)
+	}
+	return normalizedReport, nil
 }
 
 func normalizeReport(raw map[string]any) map[string]any {
