@@ -806,7 +806,7 @@ func normalizePlaywrightReport(raw map[string]any) map[string]any {
 // normalizePlaywrightJUnit converts a Playwright JUnit XML report into the normalized map[string]any structure.
 // Playwright JUnit uses classname format: "file › Suite Title › Nested Suite"
 func normalizePlaywrightJUnit(data JUnitTestSuites) (map[string]any, error) {
-	return nil, fmt.Errorf("Playwright JUnit XML normalization is not yet implemented")
+	return nil, fmt.Errorf("playwright JUnit XML normalization is not yet implemented")
 }
 
 // normalizeAppiumJUnit converts an Appium JUnit XML report into the normalized map[string]any structure.
@@ -884,9 +884,9 @@ func normalizeAppiumJUnit(data JUnitTestSuites) (map[string]any, error) {
 			switch {
 			case strings.Contains(classLower, "setup"):
 				specType = "setup"
-			case strings.Contains(classLower, "happyPath"):
+			case strings.Contains(classLower, "happypath"):
 				specType = "happyPath"
-			case strings.Contains(classLower, "negativePath"):
+			case strings.Contains(classLower, "negativepath"):
 				specType = "negativePath"
 			default:
 				specType = "happyPath"
