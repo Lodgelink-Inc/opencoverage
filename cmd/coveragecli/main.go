@@ -366,7 +366,7 @@ func runMobileCoverage(args []string) {
 	runTimestamp := fs.String("run-timestamp", time.Now().UTC().Format(time.RFC3339), "Run timestamp (RFC3339)")
 	threshold := fs.Float64("threshold", 0, "Custom threshold percentage (0 to disable custom threshold)")
 	metric := fs.String("metric", "line", "Metric used for totals: line|instruction|branch|method|complexity")
-	groupBy := fs.String("group-by", "dir", "Grouping strategy: package|class|dir")
+	groupBy := fs.String("group-by", "dir", "Grouping strategy: file|dir")
 	out := fs.String("out", "", "Optional path to write generated payload")
 	dryRun := fs.Bool("dry-run", false, "Generate payload without upload")
 	var includeGlobs globList
