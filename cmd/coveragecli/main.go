@@ -1189,8 +1189,8 @@ func parseJacocoReport(reportPath, metric, groupBy string, includeGlobs, exclude
 	if !validMetrics[metric] {
 		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported metric %q; valid: line, instruction, branch, method, complexity", metric)
 	}
-	if groupBy != "package" && groupBy != "class" && groupBy != "dir" {
-		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported group-by %q; valid: package, class", groupBy)
+	if groupBy != "file" && groupBy != "dir" {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported group-by %q; valid: file, dir", groupBy)
 	}
 
 	raw, err := os.ReadFile(reportPath)
@@ -1289,8 +1289,8 @@ func findJacocoCounter(counters []JacocoCounter, metricType string) (missed, cov
 // parseSonarCoverage parses a Sonar Generic Coverage XML report and returns total coverage,
 // per-file/dir coverage, and the count of considered files.
 func parseSonarCoverage(reportPath, groupBy string, includeGlobs, excludeGlobs []string) (float64, []packageCoverage, int, error) {
-	if groupBy != "package" && groupBy != "class" && groupBy != "dir" {
-		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported group-by %q; valid: package (dir), class (file), dir", groupBy)
+	if groupBy != "file" && groupBy != "dir" {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported group-by %q; valid: file (class), dir", groupBy)
 	}
 
 	raw, err := os.ReadFile(reportPath)
