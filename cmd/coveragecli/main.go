@@ -1398,10 +1398,7 @@ func normalizeSonarPath(filePath string) string {
 	// Common iOS/Xcode path patterns to strip.
 	patternsToStrip := []string{
 		"/SourcePackages/checkouts/",
-		// "/DerivedData/",
-		// "/Build/Intermediates/",
 	}
-
 	for _, pattern := range patternsToStrip {
 		if idx := strings.Index(normalized, pattern); idx != -1 {
 			// Keep everything after the pattern.
@@ -1410,21 +1407,8 @@ func normalizeSonarPath(filePath string) string {
 		}
 	}
 
-	// If path starts with /Users/ or similar, try to extract the last meaningful parts.
-	if strings.HasPrefix(normalized, "/Users/") || strings.HasPrefix(normalized, "/home/") {
-		// Find Sources/ or src/ or similar common source directories.
-		sourceMarkers := []string{"/Sources/", "/src/", "/Source/", "/App/"}
-		for _, marker := range sourceMarkers {
-			if idx := strings.Index(normalized, marker); idx != -1 {
-				normalized = normalized[idx+1:] // Keep the marker's directory name.
-				break
-			}
-		}
-	}
-
 	// Remove leading slashes.
 	normalized = strings.TrimPrefix(normalized, "/")
-
 	return path.Clean(normalized)
 }
 
