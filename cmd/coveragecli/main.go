@@ -1290,7 +1290,7 @@ func findJacocoCounter(counters []JacocoCounter, metricType string) (missed, cov
 // per-file/dir coverage, and the count of considered files.
 func parseSonarCoverage(reportPath, groupBy string, includeGlobs, excludeGlobs []string) (float64, []packageCoverage, int, error) {
 	if groupBy != "file" && groupBy != "dir" {
-		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported group-by %q; valid: file (class), dir", groupBy)
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported group-by %q; valid: file, dir", groupBy)
 	}
 
 	raw, err := os.ReadFile(reportPath)
@@ -1345,7 +1345,7 @@ func parseSonarCoverage(reportPath, groupBy string, includeGlobs, excludeGlobs [
 
 		// Determine group key based on groupBy strategy.
 		var groupKey string
-		if groupBy == "dir" {
+		if groupBy == "dir" || groupBy == "file" {
 			groupKey = path.Dir(filePath)
 			if groupKey == "." || groupKey == "/" {
 				groupKey = path.Base(filePath)
