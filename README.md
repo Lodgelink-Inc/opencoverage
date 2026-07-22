@@ -241,6 +241,60 @@ Useful options:
 - `-path-strip-prefix` for deterministic path normalization
 - `-dry-run` and `-out <payload.json>` to inspect payload without upload
 
+### Upload Mobile Coverage (JaCoCo/Sonar)
+
+The CLI supports uploading mobile coverage reports from Android (JaCoCo XML) and iOS (Sonar Generic XML) to the `/v1/coverage-runs` endpoint.
+
+**Android JaCoCo XML report:**
+
+JaCoCo is the standard coverage tool for Android/JVM projects. Upload the XML report:
+
+```bash
+go run ./cmd/coveragecli mobile-coverage \
+  -report jacocoTestReport.xml \
+  -format jacoco \
+  -api-url http://localhost:8080/v1/coverage-runs \
+  -api-key dev-local-key \
+  -project-key github.com/example/android-app \
+  -project-name android-app \
+  -project-group mobile \
+  -default-branch main \
+  -branch main \
+  -commit-sha abc123 \
+  -author alice \
+  -trigger-type push
+```
+
+**iOS Sonar Generic Coverage XML report:**
+
+iOS coverage from XCResult can be converted to Sonar Generic Coverage XML using community tools. Upload the converted report:
+
+```bash
+go run ./cmd/coveragecli mobile-coverage \
+  -report iosCoverage.xml \
+  -format sonar \
+  -api-url http://localhost:8080/v1/coverage-runs \
+  -api-key dev-local-key \
+  -project-key github.com/example/ios-app \
+  -project-name ios-app \
+  -project-group mobile \
+  -default-branch main \
+  -branch main \
+  -commit-sha abc123 \
+  -author alice \
+  -trigger-type push
+```
+
+Key flags:
+
+- `-report` — path to coverage report file (JaCoCo XML or Sonar Generic XML)
+- `-format jacoco|sonar` — report format (default `jacoco`)
+- `-metric line|instruction|branch` — metric for totals (default `line`)
+- `-group-by package|class|dir` — grouping strategy (default `dir`)
+- `-include-glob` and `-exclude-glob` (repeatable) — filter packages
+- `-threshold` — custom threshold percentage
+- `-dry-run` and `-out <payload.json>` — inspect payload without upload
+
 ### Upload E2E Test Reports (Playwright/Appium)
 
 The CLI supports uploading E2E test reports from Playwright (JSON) and Appium (JUnit XML) to the `/v1/e2e-test-runs` endpoint.

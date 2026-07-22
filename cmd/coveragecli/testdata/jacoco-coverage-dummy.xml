@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.1//EN" "report.dtd">
+<report name="TestApp">
+   <package name="com/example/api">
+      <class name="com/example/api/Handler" sourcefilename="Handler.kt">
+         <counter type="INSTRUCTION" missed="10" covered="40" />
+         <counter type="BRANCH" missed="2" covered="8" />
+         <counter type="LINE" missed="5" covered="15" />
+         <counter type="METHOD" missed="1" covered="4" />
+      </class>
+      <counter type="INSTRUCTION" missed="10" covered="40" />
+      <counter type="BRANCH" missed="2" covered="8" />
+      <counter type="LINE" missed="5" covered="15" />
+      <counter type="METHOD" missed="1" covered="4" />
+   </package>
+   <package name="com/example/service">
+      <class name="com/example/service/UserService" sourcefilename="UserService.kt">
+         <counter type="INSTRUCTION" missed="20" covered="80" />
+         <counter type="BRANCH" missed="4" covered="16" />
+         <counter type="LINE" missed="10" covered="30" />
+         <counter type="METHOD" missed="2" covered="8" />
+      </class>
+      <counter type="INSTRUCTION" missed="20" covered="80" />
+      <counter type="BRANCH" missed="4" covered="16" />
+      <counter type="LINE" missed="10" covered="30" />
+      <counter type="METHOD" missed="2" covered="8" />
+   </package>
+   <counter type="INSTRUCTION" missed="30" covered="120" />
+   <counter type="BRANCH" missed="6" covered="24" />
+   <counter type="LINE" missed="15" covered="45" />
+   <counter type="METHOD" missed="3" covered="12" />
+</report>

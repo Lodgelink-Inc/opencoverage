@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseVitestSummary_GroupByDir(t *testing.T) {
@@ -495,5 +497,120 @@ func TestNormalizeAppiumJUnit(t *testing.T) {
 	}
 	if _, ok := failure["stackTrace"]; !ok {
 		t.Errorf("failure missing stackTrace")
+	}
+}
+
+func TestParseJacocoReport(t *testing.T) {
+	t.Parallel()
+
+	reportPath := filepath.Join("testdata", "jacoco-coverage-dummy.xml")
+
+	tests := []struct {
+		name          string
+		metric        string
+		groupBy       string
+		wantTotal     float64
+		wantPkgCount  int
+		wantFirstPkg  string
+		wantFirstPct  float64 // coverage percentage of the first package
+		wantSecondPkg string
+		wantSecondPct float64
+	}{
+		{
+			name:          "line metric",
+			metric:        "line",
+			groupBy:       "dir",
+			wantTotal:     75.0, // 45 covered / 60 total
+			wantPkgCount:  2,
+			wantFirstPkg:  "com.example.api",
+			wantFirstPct:  75.0, // 15 / 20
+			wantSecondPkg: "com.example.service",
+			wantSecondPct: 75.0, // 30 / 40
+		},
+		{
+			name:          "instruction metric",
+			metric:        "instruction",
+			groupBy:       "dir",
+			wantTotal:     80.0, // 120 covered / 150 total
+			wantPkgCount:  2,
+			wantFirstPkg:  "com.example.api",
+			wantFirstPct:  80.0, // 40 / 50
+			wantSecondPkg: "com.example.service",
+			wantSecondPct: 80.0, // 80 / 100
+		},
+		{
+			name:          "branch metric",
+			metric:        "branch",
+			groupBy:       "dir",
+			wantTotal:     80.0, // 24 covered / 30 total
+			wantPkgCount:  2,
+			wantFirstPkg:  "com.example.api",
+			wantFirstPct:  80.0, // 8 / 10
+			wantSecondPkg: "com.example.service",
+			wantSecondPct: 80.0, // 16 / 20
+		},
+		{
+			name:          "method metric",
+			metric:        "method",
+			groupBy:       "dir",
+			wantTotal:     80.0, // 12 covered / 15 total
+			wantPkgCount:  2,
+			wantFirstPkg:  "com.example.api",
+			wantFirstPct:  80.0, // 4 / 5
+			wantSecondPkg: "com.example.service",
+			wantSecondPct: 80.0, // 8 / 10
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			total, pkgs, considered, err := parseJacocoReport(reportPath, tt.metric, tt.groupBy, nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantTotal, total, "total coverage mismatch")
+			require.Equal(t, tt.wantPkgCount, len(pkgs), "package count mismatch")
+			require.Equal(t, tt.wantPkgCount, considered, "considered count mismatch")
+
+			// Packages are sorted alphabetically.
+			require.Equal(t, tt.wantFirstPkg, pkgs[0].ImportPath)
+			require.Equal(t, tt.wantFirstPct, pkgs[0].CoveragePercent)
+			require.Equal(t, tt.wantSecondPkg, pkgs[1].ImportPath)
+			require.Equal(t, tt.wantSecondPct, pkgs[1].CoveragePercent)
+		})
+	}
+}
+
+func TestParseSonarCoverage(t *testing.T) {
+	t.Parallel()
+
+	reportPath := filepath.Join("testdata", "sonar-coverage-dummy.xml")
+
+	tests := []struct {
+		name           string
+		groupBy        string
+		wantTotal      float64
+		wantPkgCount   int
+		wantConsidered int
+	}{
+		{
+			name:           "group by directory (dir)",
+			groupBy:        "dir",
+			wantTotal:      73.33,
+			wantPkgCount:   2, // Services and Controllers directories
+			wantConsidered: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			total, pkgs, considered, err := parseSonarCoverage(reportPath, tt.groupBy, nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantTotal, total, "total coverage mismatch")
+			require.Equal(t, tt.wantPkgCount, len(pkgs), "package count mismatch")
+			require.Equal(t, tt.wantConsidered, considered, "considered count mismatch")
+		})
 	}
 }

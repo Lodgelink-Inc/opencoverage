@@ -21,152 +21,6 @@ import (
 	"time"
 )
 
-type globList []string
-
-func (g *globList) String() string {
-	if len(*g) == 0 {
-		return ""
-	}
-	return strings.Join(*g, ",")
-}
-
-func (g *globList) Set(value string) error {
-	v := strings.TrimSpace(value)
-	if v == "" {
-		return fmt.Errorf("glob cannot be empty")
-	}
-	*g = append(*g, v)
-	return nil
-}
-
-type packageCoverage struct {
-	ImportPath      string  `json:"importPath"`
-	CoveragePercent float64 `json:"coveragePercent"`
-}
-
-type ingestPayload struct {
-	ProjectKey           string            `json:"projectKey"`
-	ProjectName          string            `json:"projectName,omitempty"`
-	ProjectGroup         *string           `json:"projectGroup,omitempty"`
-	DefaultBranch        string            `json:"defaultBranch,omitempty"`
-	Branch               string            `json:"branch"`
-	CommitSHA            string            `json:"commitSha"`
-	Author               string            `json:"author,omitempty"`
-	TriggerType          string            `json:"triggerType"`
-	RunTimestamp         string            `json:"runTimestamp"`
-	TotalCoveragePercent float64           `json:"totalCoveragePercent"`
-	ThresholdPercent     *float64          `json:"thresholdPercent,omitempty"`
-	Packages             []packageCoverage `json:"packages"`
-}
-
-type integrationPayload struct {
-	ProjectKey    string         `json:"projectKey"`
-	ProjectName   string         `json:"projectName,omitempty"`
-	ProjectGroup  *string        `json:"projectGroup,omitempty"`
-	DefaultBranch string         `json:"defaultBranch,omitempty"`
-	Branch        string         `json:"branch"`
-	CommitSHA     string         `json:"commitSha"`
-	Author        string         `json:"author,omitempty"`
-	TriggerType   string         `json:"triggerType"`
-	RunTimestamp  string         `json:"runTimestamp"`
-	Environment   *string        `json:"environment,omitempty"`
-	GinkgoReport  map[string]any `json:"ginkgoReport"`
-}
-
-type e2ePayload struct {
-	ProjectKey    string         `json:"projectKey"`
-	ProjectName   string         `json:"projectName,omitempty"`
-	ProjectGroup  *string        `json:"projectGroup,omitempty"`
-	DefaultBranch string         `json:"defaultBranch,omitempty"`
-	Branch        string         `json:"branch"`
-	CommitSHA     string         `json:"commitSha"`
-	Author        string         `json:"author,omitempty"`
-	TriggerType   string         `json:"triggerType"`
-	RunTimestamp  string         `json:"runTimestamp"`
-	Environment   *string        `json:"environment,omitempty"`
-	TestReport    map[string]any `json:"testReport"`
-}
-
-type uploadResponse struct {
-	Run struct {
-		Status          string  `json:"status"`
-		PassRatePercent float64 `json:"passRatePercent"`
-	} `json:"run"`
-	Comparison struct {
-		DeltaPercent *float64 `json:"deltaPercent"`
-	} `json:"comparison"`
-}
-
-type vitestMetric struct {
-	Total   float64 `json:"total"`
-	Covered float64 `json:"covered"`
-	Skipped float64 `json:"skipped"`
-	Pct     float64 `json:"pct"`
-}
-
-type vitestSummaryEntry struct {
-	Lines      vitestMetric `json:"lines"`
-	Statements vitestMetric `json:"statements"`
-	Functions  vitestMetric `json:"functions"`
-	Branches   vitestMetric `json:"branches"`
-}
-
-type metricAgg struct {
-	Covered float64
-	Total   float64
-}
-
-// JUnit XML structs — shared between Playwright and Appium JUnit reports.
-// JUnitTestSuites represents the root <testsuites> element in JUnit XML.
-type JUnitTestSuites struct {
-	XMLName    xml.Name         `xml:"testsuites"`
-	Name       string           `xml:"name,attr,omitempty"`
-	Tests      int              `xml:"tests,attr,omitempty"`
-	Failures   int              `xml:"failures,attr,omitempty"`
-	Errors     int              `xml:"errors,attr,omitempty"`
-	Time       float64          `xml:"time,attr,omitempty"`
-	TestSuites []JUnitTestSuite `xml:"testsuite"`
-}
-
-// JUnitTestSuite represents a single <testsuite> element in JUnit XML.
-type JUnitTestSuite struct {
-	Name       string          `xml:"name,attr"`
-	Tests      int             `xml:"tests,attr,omitempty"`
-	Failures   int             `xml:"failures,attr,omitempty"`
-	Errors     int             `xml:"errors,attr,omitempty"`
-	Skipped    int             `xml:"skipped,attr,omitempty"`
-	Time       float64         `xml:"time,attr,omitempty"`
-	Timestamp  string          `xml:"timestamp,attr,omitempty"`
-	Hostname   string          `xml:"hostname,attr,omitempty"`
-	Properties []JUnitProperty `xml:"properties>property,omitempty"`
-	TestCases  []JUnitTestCase `xml:"testcase"`
-	SystemOut  string          `xml:"system-out,omitempty"`
-}
-
-type JUnitTestCase struct {
-	Classname string        `xml:"classname,attr,omitempty"`
-	Name      string        `xml:"name,attr"`
-	Time      float64       `xml:"time,attr,omitempty"`
-	Status    string        `xml:"status,attr,omitempty"`
-	Failure   *JUnitFailure `xml:"failure,omitempty"`
-	Skipped   *JUnitSkipped `xml:"skipped,omitempty"`
-}
-
-type JUnitFailure struct {
-	Message string `xml:"message,attr,omitempty"`
-	Type    string `xml:"type,attr,omitempty"`
-	Body    string `xml:",chardata"`
-}
-
-type JUnitSkipped struct {
-	Message string `xml:"message,attr,omitempty"`
-}
-
-type JUnitProperty struct {
-	Name  string `xml:"name,attr"`
-	Value string `xml:"value,attr"`
-}
-
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -178,6 +32,9 @@ func main() {
 			return
 		case "npm-upload":
 			runNPMUpload(os.Args[2:])
+			return
+		case "mobile-coverage":
+			runMobileCoverage(os.Args[2:])
 			return
 		}
 	}
@@ -269,6 +126,144 @@ func runNPMUpload(args []string) {
 	payloadOut := strings.TrimSpace(*out)
 	if *dryRun && payloadOut == "" {
 		payloadOut = "npm-coverage-upload.json"
+	}
+	if payloadOut != "" {
+		if err := os.WriteFile(payloadOut, body, 0o644); err != nil {
+			exitErr("write payload", err)
+		}
+		slog.Info("payload written", "path", payloadOut)
+	}
+
+	if *dryRun {
+		fmt.Println("dry-run enabled: skipping upload")
+		return
+	}
+
+	if strings.TrimSpace(*apiKey) == "" {
+		exitErr("validate input", fmt.Errorf("ERR_INPUT_SCHEMA: -api-key is required (or API_KEY env var)"))
+	}
+
+	status, respBody, err := uploadPayload(*apiURL, *apiKeyHeader, *apiKey, body)
+	if err != nil {
+		exitErr("upload", fmt.Errorf("ERR_UPLOAD_FAILED: %w", err))
+	}
+
+	slog.Info("upload status", "status", status)
+	slog.Info("upload response", "response", strings.TrimSpace(string(respBody)))
+
+	if status >= http.StatusBadRequest {
+		exitErr("upload", fmt.Errorf("ERR_UPLOAD_FAILED: server returned status %d", status))
+	}
+}
+
+func runMobileCoverage(args []string) {
+	fs := flag.NewFlagSet("mobile-coverage", flag.ExitOnError)
+	reportPath := fs.String("report", "", "Path to coverage report (JaCoCo XML or Sonar Generic XML)")
+	formatFlag := fs.String("format", "jacoco", "Report format: jacoco|sonar")
+	apiURL := fs.String("api-url", envOrDefault("API_URL", "http://localhost:8080/v1/coverage-runs"), "Coverage API URL")
+	apiKey := fs.String("api-key", os.Getenv("API_KEY"), "API key value")
+	apiKeyHeader := fs.String("api-key-header", "X-API-Key", "API key header name")
+	projectKey := fs.String("project-key", envOrDefault("COVERAGE_PROJECT_KEY", "github.com/arxdsilva/opencoverage"), "Project key")
+	projectName := fs.String("project-name", envOrDefault("COVERAGE_PROJECT_NAME", "coverage-api"), "Project display name")
+	projectGroup := fs.String("project-group", "", "Project group (optional)")
+	defaultBranch := fs.String("default-branch", envOrDefault("COVERAGE_DEFAULT_BRANCH", "main"), "Default branch")
+	branch := fs.String("branch", envOrDefault("COVERAGE_BRANCH", "main"), "Current branch")
+	commitSHA := fs.String("commit-sha", envOrDefault("COVERAGE_COMMIT_SHA", "local"), "Commit SHA")
+	author := fs.String("author", envOrDefault("COVERAGE_AUTHOR", "local"), "Author")
+	triggerType := fs.String("trigger-type", "manual", "Trigger type: push|pr|manual")
+	runTimestamp := fs.String("run-timestamp", time.Now().UTC().Format(time.RFC3339), "Run timestamp (RFC3339)")
+	threshold := fs.Float64("threshold", 0, "Custom threshold percentage (0 to disable custom threshold)")
+	metric := fs.String("metric", "line", "Metric used for totals: line|instruction|branch|method|complexity")
+	groupBy := fs.String("group-by", "dir", "Grouping strategy: file|dir")
+	out := fs.String("out", "", "Optional path to write generated payload")
+	dryRun := fs.Bool("dry-run", false, "Generate payload without upload")
+	var includeGlobs globList
+	var excludeGlobs globList
+	fs.Var(&includeGlobs, "include-glob", "Include packages matching this glob (repeatable)")
+	fs.Var(&excludeGlobs, "exclude-glob", "Exclude packages matching this glob (repeatable)")
+
+	if err := fs.Parse(args); err != nil {
+		exitErr("parse flags", err)
+	}
+
+	if strings.TrimSpace(*reportPath) == "" {
+		exitErr("validate input", fmt.Errorf("ERR_INPUT_SCHEMA: -report is required"))
+	}
+	if _, err := time.Parse(time.RFC3339, *runTimestamp); err != nil {
+		exitErr("validate input", fmt.Errorf("ERR_INPUT_SCHEMA: run timestamp must be RFC3339: %w", err))
+	}
+
+	format := strings.ToLower(strings.TrimSpace(*formatFlag))
+
+	var total float64
+	var packages []packageCoverage
+	var consideredCount int
+	var parseErr error
+
+	switch format {
+	case "jacoco":
+		total, packages, consideredCount, parseErr = parseJacocoReport(
+			*reportPath,
+			*metric,
+			*groupBy,
+			includeGlobs,
+			excludeGlobs,
+		)
+	case "sonar":
+		total, packages, consideredCount, parseErr = parseSonarCoverage(
+			*reportPath,
+			*groupBy,
+			includeGlobs,
+			excludeGlobs,
+		)
+	default:
+		exitErr("validate input", fmt.Errorf("ERR_INPUT_SCHEMA: unsupported format %q; valid: jacoco, sonar", format))
+	}
+	if parseErr != nil {
+		exitErr("parse coverage report", parseErr)
+	}
+
+	// Metric flag is only used for JaCoCo; Sonar only supports line coverage.
+	metricLabel := *metric
+	if format == "sonar" {
+		metricLabel = "line"
+	}
+
+	var group *string
+	if *projectGroup != "" {
+		group = projectGroup
+	}
+
+	var thresh *float64
+	if *threshold > 0 {
+		thresh = threshold
+	}
+
+	slog.Info("summary", "metric", metricLabel, "totalCoveragePercent", total, "consideredPackages", consideredCount, "generatedPackages", len(packages))
+
+	payload := ingestPayload{
+		ProjectKey:           *projectKey,
+		ProjectName:          *projectName,
+		ProjectGroup:         group,
+		DefaultBranch:        *defaultBranch,
+		Branch:               *branch,
+		CommitSHA:            *commitSHA,
+		Author:               *author,
+		TriggerType:          *triggerType,
+		RunTimestamp:         *runTimestamp,
+		TotalCoveragePercent: total,
+		ThresholdPercent:     thresh,
+		Packages:             packages,
+	}
+
+	body, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		exitErr("marshal payload", err)
+	}
+
+	payloadOut := strings.TrimSpace(*out)
+	if *dryRun && payloadOut == "" {
+		payloadOut = "mobile-coverage-upload.json"
 	}
 	if payloadOut != "" {
 		if err := os.WriteFile(payloadOut, body, 0o644); err != nil {
@@ -990,6 +985,239 @@ func firstMap(src map[string]any, keys ...string) map[string]any {
 		}
 	}
 	return nil
+}
+
+// parseJacocoReport parses a JaCoCo XML coverage report and returns total coverage,
+// per-package coverage, and the count of considered packages.
+func parseJacocoReport(reportPath, metric, groupBy string, includeGlobs, excludeGlobs []string) (float64, []packageCoverage, int, error) {
+	validMetrics := map[string]bool{
+		"line": true, "instruction": true, "branch": true,
+		"method": true, "complexity": true,
+	}
+	if !validMetrics[metric] {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported metric %q; valid: line, instruction, branch, method, complexity", metric)
+	}
+	if groupBy != "file" && groupBy != "dir" {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported group-by %q; valid: file, dir", groupBy)
+	}
+
+	raw, err := os.ReadFile(reportPath)
+	if err != nil {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_READ: %w", err)
+	}
+
+	var report JacocoReport
+	if err := xml.Unmarshal(raw, &report); err != nil {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_PARSE: %w", err)
+	}
+
+	// Extract report-level total for the selected metric.
+	totalMissed, totalCovered, found := findJacocoCounter(report.Counters, metric)
+	if !found {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: metric %q not found in report-level counters", metric)
+	}
+	totalSum := totalMissed + totalCovered
+	if totalSum <= 0 {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: total coverage is zero (no executable code found)")
+	}
+	totalPercent := round2((float64(totalCovered) / float64(totalSum)) * 100)
+
+	// Build per-package or per-class coverage.
+	byGroup := make(map[string]metricAgg)
+	consideredCount := 0
+
+	for _, pkg := range report.Packages {
+		// Convert JaCoCo package name (com/example/foo) to dot notation (com.example.foo).
+		pkgName := strings.ReplaceAll(pkg.Name, "/", ".")
+
+		// Apply glob filters at the package level.
+		if len(includeGlobs) > 0 && !matchesAnyGlob(pkgName, includeGlobs) {
+			continue
+		}
+		if matchesAnyGlob(pkgName, excludeGlobs) {
+			continue
+		}
+
+		if groupBy == "dir" {
+			missed, covered, ok := findJacocoCounter(pkg.Counters, metric)
+			if !ok || (missed+covered) <= 0 {
+				continue
+			}
+			agg := byGroup[pkgName]
+			agg.Covered += float64(covered)
+			agg.Total += float64(missed + covered)
+			byGroup[pkgName] = agg
+			consideredCount++
+		}
+	}
+
+	if consideredCount == 0 || len(byGroup) == 0 {
+		return 0, nil, 0, fmt.Errorf("ERR_EMPTY_DATASET: no packages remained after filtering")
+	}
+
+	pkgs := make([]packageCoverage, 0, len(byGroup))
+	for groupKey, agg := range byGroup {
+		if agg.Total <= 0 {
+			continue
+		}
+		pct := round2((agg.Covered / agg.Total) * 100)
+		pkgs = append(pkgs, packageCoverage{
+			ImportPath:      groupKey,
+			CoveragePercent: pct,
+		})
+	}
+
+	if len(pkgs) == 0 {
+		return 0, nil, 0, fmt.Errorf("ERR_EMPTY_DATASET: generated packages list is empty")
+	}
+
+	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].ImportPath < pkgs[j].ImportPath })
+	return totalPercent, pkgs, consideredCount, nil
+}
+
+// findJacocoCounter searches for a counter of the given type and returns missed, covered, and found.
+func findJacocoCounter(counters []JacocoCounter, metricType string) (missed, covered int, found bool) {
+	// Map CLI metric names to JaCoCo counter type names (uppercase).
+	typeMap := map[string]string{
+		"line":        "LINE",
+		"instruction": "INSTRUCTION",
+		"branch":      "BRANCH",
+		"method":      "METHOD",
+		"complexity":  "COMPLEXITY",
+	}
+	target := typeMap[metricType]
+	for _, c := range counters {
+		if c.Type == target {
+			return c.Missed, c.Covered, true
+		}
+	}
+	return 0, 0, false
+}
+
+// parseSonarCoverage parses a Sonar Generic Coverage XML report and returns total coverage,
+// per-file/dir coverage, and the count of considered files.
+func parseSonarCoverage(reportPath, groupBy string, includeGlobs, excludeGlobs []string) (float64, []packageCoverage, int, error) {
+	if groupBy != "file" && groupBy != "dir" {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: unsupported group-by %q; valid: file, dir", groupBy)
+	}
+
+	raw, err := os.ReadFile(reportPath)
+	if err != nil {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_READ: %w", err)
+	}
+
+	var report SonarCoverage
+	if err := xml.Unmarshal(raw, &report); err != nil {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_PARSE: %w", err)
+	}
+
+	if len(report.Files) == 0 {
+		return 0, nil, 0, fmt.Errorf("ERR_INPUT_SCHEMA: no <file> elements found in Sonar coverage report")
+	}
+
+	// Calculate totals and per-group coverage.
+	var totalCovered, totalLines int
+	byGroup := make(map[string]metricAgg)
+	consideredCount := 0
+
+	for _, file := range report.Files {
+		if len(file.Lines) == 0 {
+			continue
+		}
+
+		// Normalize path: extract relative path from absolute path.
+		filePath := normalizeSonarPath(file.Path)
+		if filePath == "" {
+			continue
+		}
+
+		// Apply glob filters.
+		if len(includeGlobs) > 0 && !matchesAnyGlob(filePath, includeGlobs) {
+			continue
+		}
+		if matchesAnyGlob(filePath, excludeGlobs) {
+			continue
+		}
+
+		// Count covered and total lines for this file.
+		fileCovered := 0
+		fileTotal := len(file.Lines)
+		for _, line := range file.Lines {
+			if line.Covered {
+				fileCovered++
+			}
+		}
+
+		totalCovered += fileCovered
+		totalLines += fileTotal
+
+		// Determine group key based on groupBy strategy.
+		var groupKey string
+		if groupBy == "dir" || groupBy == "file" {
+			groupKey = path.Dir(filePath)
+			if groupKey == "." || groupKey == "/" {
+				groupKey = path.Base(filePath)
+			}
+		} else {
+			groupKey = filePath
+		}
+
+		agg := byGroup[groupKey]
+		agg.Covered += float64(fileCovered)
+		agg.Total += float64(fileTotal)
+		byGroup[groupKey] = agg
+		consideredCount++
+	}
+
+	if totalLines == 0 {
+		return 0, nil, 0, fmt.Errorf("ERR_EMPTY_DATASET: no coverage lines found after filtering")
+	}
+
+	totalPercent := round2((float64(totalCovered) / float64(totalLines)) * 100)
+
+	pkgs := make([]packageCoverage, 0, len(byGroup))
+	for groupKey, agg := range byGroup {
+		if agg.Total <= 0 {
+			continue
+		}
+		pct := round2((agg.Covered / agg.Total) * 100)
+		pkgs = append(pkgs, packageCoverage{
+			ImportPath:      groupKey,
+			CoveragePercent: pct,
+		})
+	}
+
+	if len(pkgs) == 0 {
+		return 0, nil, 0, fmt.Errorf("ERR_EMPTY_DATASET: generated packages list is empty")
+	}
+
+	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].ImportPath < pkgs[j].ImportPath })
+	return totalPercent, pkgs, consideredCount, nil
+}
+
+// normalizeSonarPath extracts a meaningful relative path from Sonar's absolute file paths.
+// It strips common prefixes like DerivedData paths to get a project-relative path.
+func normalizeSonarPath(filePath string) string {
+	normalized := strings.TrimSpace(strings.ReplaceAll(filePath, "\\", "/"))
+	if normalized == "" {
+		return ""
+	}
+
+	// Common iOS/Xcode path patterns to strip.
+	patternsToStrip := []string{
+		"/SourcePackages/checkouts/",
+	}
+	for _, pattern := range patternsToStrip {
+		if idx := strings.Index(normalized, pattern); idx != -1 {
+			// Keep everything after the pattern.
+			normalized = normalized[idx+len(pattern):]
+			break
+		}
+	}
+
+	// Remove leading slashes.
+	normalized = strings.TrimPrefix(normalized, "/")
+	return path.Clean(normalized)
 }
 
 func parseVitestSummary(summaryPath, metric, groupBy, pathStripPrefix string, includeGlobs, excludeGlobs []string) (float64, []packageCoverage, int, error) {
