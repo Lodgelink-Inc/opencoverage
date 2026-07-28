@@ -43,17 +43,16 @@ JaCoCo reports contain package-level and class-level coverage counters:
 ### GitHub Actions Workflow (Android)
 
 ```yaml
-
 steps:
     - name: Install coverage CLI
-    run: go install github.com/arxdsilva/opencoverage/cmd/coveragecli@latest
+      run: go install github.com/arxdsilva/opencoverage/cmd/coveragecli@latest
 
     - name: Upload coverage to API
-    if: ${{ secrets.COVERAGE_API_URL != '' && secrets.COVERAGE_API_KEY != '' }}
-    env:
+      if: ${{ secrets.COVERAGE_API_URL != '' && secrets.COVERAGE_API_KEY != '' }}
+      env:
         COVERAGE_API_URL: ${{ secrets.COVERAGE_API_URL }}
         COVERAGE_API_KEY: ${{ secrets.COVERAGE_API_KEY }}
-    run: |
+      run: |
         PROJECT_KEY="${COVERAGE_PROJECT_KEY:-${{ github.repository }}}"
         PROJECT_NAME="${COVERAGE_PROJECT_NAME:-${{ github.event.repository.name }}}"
         PROJECT_GROUP="${COVERAGE_PROJECT_GROUP:-mobile}"
@@ -107,14 +106,14 @@ Sonar Generic XML reports contain file-level line coverage:
 ```yaml
 steps:
     - name: Install coverage CLI
-    run: go install github.com/arxdsilva/opencoverage/cmd/coveragecli@latest
+      run: go install github.com/arxdsilva/opencoverage/cmd/coveragecli@latest
 
     - name: Upload coverage to API
-    if: ${{ secrets.COVERAGE_API_URL != '' && secrets.COVERAGE_API_KEY != '' }}
-    env:
+      if: ${{ secrets.COVERAGE_API_URL != '' && secrets.COVERAGE_API_KEY != '' }}
+      env:
         COVERAGE_API_URL: ${{ secrets.COVERAGE_API_URL }}
         COVERAGE_API_KEY: ${{ secrets.COVERAGE_API_KEY }}
-    run: |
+      run: |
         PROJECT_KEY="${COVERAGE_PROJECT_KEY:-${{ github.repository }}}"
         PROJECT_NAME="${COVERAGE_PROJECT_NAME:-${{ github.event.repository.name }}}"
         PROJECT_GROUP="${COVERAGE_PROJECT_GROUP:-mobile}"
@@ -166,7 +165,7 @@ coveragecli mobile-coverage
 # Group by individual file
 coveragecli mobile-coverage 
   -report coverage.xml \
-  -format jacoco \
+  -format sonar \
   -group-by file
 ```
 
@@ -180,11 +179,11 @@ coveragecli mobile-coverage
 |------|-------------|---------|
 | `-report` | Path to coverage report (required) | - |
 | `-format` | Report format: `jacoco` or `sonar` | `jacoco` |
-| `-api-url` | Coverage API URL | `http://localhost:8080/v1/coverage-runs` |
-| `-api-key` | API key for authentication | - |
+| `-api-url` | Coverage API URL | `$API_URL` or `http://localhost:8080/v1/coverage-runs` |
+| `-api-key` | API key for authentication | `$API_KEY` |
 | `-api-key-header` | Custom API key header name | `X-API-Key` |
-| `-project-key` | Unique project identifier | - |
-| `-project-name` | Display name for the project | - |
+| `-project-key` | Unique project identifier | `$COVERAGE_PROJECT_KEY` or repository |
+| `-project-name` | Display name for the project | `$COVERAGE_PROJECT_NAME` or `coverage-api` |
 | `-project-group` | Optional project group | - |
 | `-default-branch` | Default branch name | `main` |
 | `-branch` | Current branch name | `main` |
