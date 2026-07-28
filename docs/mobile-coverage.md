@@ -140,14 +140,14 @@ steps:
 
 ### Filtering Packages/Files
 
-Use glob patterns to include or exclude specific packages:
+Use glob patterns to include or exclude specific packages/file:
 
 ```bash
 # Exclude generated gRPC code
 coveragecli mobile-coverage \
   -report coverage.xml \
-  -format jacoco \
-  -exclude-glob "*Grpc*" \
+  -format sonar \
+  -exclude-glob "**/Generated/**" \
 
 ```
 
